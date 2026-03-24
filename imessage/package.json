@@ -16,7 +16,8 @@
     "access": "public"
   },
   "scripts": {
-    "start": "node bin/imessage.mjs"
+    "start": "node bin/imessage.mjs",
+    "postinstall": "cd node_modules/better-sqlite3 && npm run build-release || true"
   },
   "engines": {
     "node": ">=18.0.0"

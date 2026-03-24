@@ -16,7 +16,8 @@
     "access": "public"
   },
   "scripts": {
-    "start": "node bin/whatsapp.mjs"
+    "start": "node bin/whatsapp.mjs",
+    "postinstall": "cd node_modules/better-sqlite3 && npm run build-release || true"
   },
   "dependencies": {
     "@buzzie-ai/core": "*",
