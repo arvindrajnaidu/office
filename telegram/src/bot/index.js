@@ -156,15 +156,7 @@ export async function startBot(opts = {}) {
     // ── Group trigger ───────────────────────────────────
     if (isGroup) {
       // Check if bot is mentioned or message is a reply to bot
-      const mentionsBot = msg.entities?.some(e =>
-        e.type === "mention" && text.substring(e.offset, e.offset + e.length) === `@${botUsername}`
-      );
-      const repliesToBot = msg.reply_to_message?.from?.id === botId;
-      const persona = loadPersonaByJid(chatId);
-
-      if (!mentionsBot && !repliesToBot && !persona) return;
-
-      if (config.groupsEnabled === false) return;
+      const persona = loadPersonaByJid(chatId) || undefined;
 
       if (!checkRateLimit(chatId)) {
         console.log(info(`Rate limit hit for group ${chatId}`));
@@ -184,7 +176,7 @@ export async function startBot(opts = {}) {
           type: "group",
           jid: chatId,
           groupName,
-          persona: persona || DEFAULT_PERSONA,
+          persona,
           senderName,
           text: cleanText,
           quotedContext: null,

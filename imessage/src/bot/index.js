@@ -223,99 +223,48 @@ export async function startBot(opts = {}) {
       return;
     }
 
-    // Incoming message
-    if (readConfig().groupsEnabled === false) {
-      console.log(`  [skip] groups disabled`);
+    // Incoming message — always dispatch to brain, let the brain decide
+    if (!checkRateLimit(chatId)) {
+      console.log(info(`Rate limit hit for ${chatId}`));
       return;
     }
 
-    if (isGroupChat(chatId)) {
-      // Group message — check for persona
-      const persona = loadPersonaByJid(chatId);
-      if (!persona) {
-        console.log(`  [skip] group ${chatId} has no persona`);
-        return;
+    const isGroup = isGroupChat(chatId);
+    const type = isGroup ? "group" : "dm";
+    const persona = loadPersonaByJid(chatId) || undefined;
+    const senderName = msg.handle || "Unknown";
+    const chatName = isGroup
+      ? (msg.chatDisplayName || chatNameMap.get(chatId) || chatId)
+      : (msg.handle || chatId);
+
+    console.log(`[${type}] ${chatName} | ${senderName}: ${text.slice(0, 80)}`);
+
+    try {
+      const history = loadGroupHistory(chatId, 3600000, 10);
+      const result = await processWithBackend({
+        type,
+        jid: chatId,
+        groupName: chatName,
+        persona,
+        senderName,
+        text,
+        quotedContext: null,
+        history,
+        meta: { selfJid: chatId, timestamp: new Date().toISOString() },
+      });
+
+      console.log(`[${type}] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
+
+      if (result.actions) await executeActions(result.actions, chatId);
+
+      if (result.text) {
+        console.log(`[${type}] replying to ${chatId}`);
+        await safeSend(chatId, BOT_PREFIX + result.text);
+      } else {
+        console.log(`[${type}] no text in response, skipping reply`);
       }
-
-      if (!checkRateLimit(chatId)) {
-        console.log(info(`Rate limit hit for ${chatId}`));
-        return;
-      }
-
-      const senderName = msg.handle || "Unknown";
-      const groupName = msg.chatDisplayName || chatNameMap.get(chatId) || chatId;
-      console.log(`[group] ${groupName} | ${senderName}: ${text.slice(0, 80)}`);
-
-      try {
-        const history = loadGroupHistory(chatId, 3600000, 10);
-        const result = await processWithBackend({
-          type: "group",
-          jid: chatId,
-          groupName,
-          persona,
-          senderName,
-          text,
-          quotedContext: null,
-          history,
-          meta: { selfJid: chatId, timestamp: new Date().toISOString() },
-        });
-
-        console.log(`[group] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
-
-        if (result.actions) await executeActions(result.actions, chatId);
-
-        if (result.text) {
-          console.log(`[group] replying to ${chatId}`);
-          await safeSend(chatId, BOT_PREFIX + result.text);
-        } else {
-          console.log(`[group] no text in response, skipping reply`);
-        }
-      } catch (err) {
-        console.log(error(`Group handler error: ${err.message}`));
-      }
-    } else {
-      // DM — check for persona
-      const persona = loadPersonaByJid(chatId);
-      if (!persona) {
-        console.log(`  [skip] DM ${chatId} has no persona`);
-        return;
-      }
-
-      if (!checkRateLimit(chatId)) {
-        console.log(info(`Rate limit hit for DM ${chatId}`));
-        return;
-      }
-
-      const contactName = msg.handle || chatId;
-      console.log(`[dm] ${contactName}: ${text.slice(0, 80)}`);
-
-      try {
-        const history = loadGroupHistory(chatId, 3600000, 10);
-        const result = await processWithBackend({
-          type: "dm",
-          jid: chatId,
-          groupName: contactName,
-          persona,
-          senderName: contactName,
-          text,
-          quotedContext: null,
-          history,
-          meta: { selfJid: chatId, timestamp: new Date().toISOString() },
-        });
-
-        console.log(`[dm] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
-
-        if (result.actions) await executeActions(result.actions, chatId);
-
-        if (result.text) {
-          console.log(`[dm] replying to ${chatId}`);
-          await safeSend(chatId, BOT_PREFIX + result.text);
-        } else {
-          console.log(`[dm] no text in response, skipping reply`);
-        }
-      } catch (err) {
-        console.log(error(`DM handler error: ${err.message}`));
-      }
+    } catch (err) {
+      console.log(error(`${type} handler error: ${err.message}`));
     }
   });
 

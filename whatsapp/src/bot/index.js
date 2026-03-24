@@ -377,9 +377,7 @@ export async function startBot(opts = {}) {
     }
 
     async function handleGroupTrigger(jid, text, senderName, quotedContext, msgKey) {
-      if (readConfig().groupsEnabled === false) return;
-
-      const persona = loadPersonaByJid(jid) || DEFAULT_PERSONA;
+      const persona = loadPersonaByJid(jid) || undefined;
       const personaRow = getPersonaByJid(jid);
       const groupName = personaRow?.group_name || groups.find(g => g.id === jid)?.subject || jid;
 
@@ -541,11 +539,6 @@ export async function startBot(opts = {}) {
         if (!text) continue;
         if (isBotMessage(text)) continue;
 
-        if (readConfig().groupsEnabled === false) continue;
-
-        const persona = loadPersonaByJid(remoteJid);
-        if (!persona) continue;
-
         if (!checkRateLimit(remoteJid)) {
           const entry = groupRateLimits.get(remoteJid);
           const resetTime = new Date(entry.windowStart + 3600000).toLocaleTimeString();
@@ -558,6 +551,7 @@ export async function startBot(opts = {}) {
         }
 
         const contactName = msg.pushName || jidToPhone(remoteJid);
+        const persona = loadPersonaByJid(remoteJid) || undefined;
         console.log(`[dm] ${contactName}: ${text.slice(0, 80)}`);
 
         const cancelAck = ackTimer(msg.key);
