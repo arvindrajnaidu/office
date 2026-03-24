@@ -1,6 +1,6 @@
 services:
   whatsapp-bot:
-    image: ${WHATSAPP_IMAGE:-ghcr.io/arvindrajnaidu/whatsapp-cli:latest}
+    image: ${WHATSAPP_IMAGE:-ghcr.io/arvindrajnaidu/office/whatsapp-channel:latest}
     build:
       context: .
       dockerfile: whatsapp/Dockerfile

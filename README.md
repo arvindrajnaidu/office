@@ -18,8 +18,8 @@ A modular framework for building AI assistants that talk to people through messa
 | Package | Description | Platform |
 |---------|-------------|----------|
 | `@buzzie-ai/core` | Shared protocol — dispatcher, API server, adapter interface | Any |
-| `@buzzie-ai/whatsapp` | WhatsApp channel via Baileys protocol | Any (Docker, Linux, macOS) |
-| `@buzzie-ai/imessage` | iMessage channel via macOS Messages.app | macOS only |
+| `@buzzie-ai/whatsapp-channel` | WhatsApp channel via Baileys protocol | Any (Docker, Linux, macOS) |
+| `@buzzie-ai/imessage-channel` | iMessage channel via macOS Messages.app | macOS only |
 
 ## Quick Start — Build an Assistant
 
@@ -30,7 +30,7 @@ Your assistant is any HTTP server that receives message envelopes and returns re
 ```bash
 mkdir my-assistant && cd my-assistant
 npm init -y
-npm install @buzzie-ai/whatsapp
+npm install @buzzie-ai/whatsapp-channel
 ```
 
 ### 2. Write your assistant server
@@ -175,7 +175,7 @@ Or with the pre-built image:
 ```bash
 docker run -v whatsapp_data:/data \
   -e ANTHROPIC_API_KEY=sk-ant-... \
-  ghcr.io/arvindrajnaidu/whatsapp-cli:latest
+  ghcr.io/arvindrajnaidu/office/whatsapp-channel:latest
 ```
 
 ## Channel CLI Commands

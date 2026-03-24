@@ -1,5 +1,5 @@
 {
-  "name": "@buzzie-ai/whatsapp",
+  "name": "@buzzie-ai/whatsapp-channel",
   "version": "1.0.2",
   "description": "WhatsApp CLI using Baileys protocol",
   "type": "module",
