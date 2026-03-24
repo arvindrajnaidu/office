@@ -175,18 +175,14 @@ export async function startBot(opts = {}) {
       return;
     }
 
-    if (msg.isFromMe) {
-      // Self-chat: messages I sent to myself
-      const isSelfChat = selfHandle && chatId && (
-        chatId.includes(selfHandle) ||
-        extractHandle(chatId) === selfHandle
-      );
+    // Self-chat detection: either fromMe in own chat, or incoming from own handle
+    const isSelfChat = selfHandle && chatId && (
+      chatId.includes(selfHandle) ||
+      extractHandle(chatId) === selfHandle
+    );
 
-      if (!isSelfChat) {
-        console.log(`  [skip] fromMe but not self-chat: chatId=${chatId} selfHandle=${selfHandle}`);
-        return;
-      }
-
+    if (isSelfChat && !msg.isFromMe) {
+      // Incoming copy of self-chat message — this is the one with text
       console.log(`[self] ${text}`);
 
       try {
@@ -218,6 +214,12 @@ export async function startBot(opts = {}) {
           console.log(error(`Failed to send error reply: ${sendErr.message}`));
         }
       }
+      return;
+    }
+
+    if (isSelfChat && msg.isFromMe) {
+      // Sent copy of self-chat — already handled by the incoming copy above
+      console.log(`  [skip] fromMe self-chat echo`);
       return;
     }
 
