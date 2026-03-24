@@ -1,0 +1,7 @@
+.github/
+.env*
+Dockerfile
+docker-compose.yml
+.dockerignore
+docker-setup.sh
+CLAUDE.md

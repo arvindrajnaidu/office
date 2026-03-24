@@ -1,0 +1,35 @@
+{
+  "name": "@buzzie-ai/imessage",
+  "version": "1.0.0",
+  "description": "iMessage CLI — send messages, manage chats, and more via macOS Messages",
+  "type": "module",
+  "bin": {
+    "imessage": "./bin/imessage.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node bin/imessage.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "dependencies": {
+    "@buzzie-ai/core": "*",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "zod": "^4.3.6"
+  }
+}

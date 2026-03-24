@@ -1,0 +1,17 @@
+services:
+  whatsapp-bot:
+    image: ${WHATSAPP_IMAGE:-ghcr.io/arvindrajnaidu/whatsapp-cli:latest}
+    build:
+      context: .
+      dockerfile: whatsapp/Dockerfile
+    environment:
+      WHATSAPP_CLI_HOME: /data
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - whatsapp_data:/data
+    init: true
+    restart: unless-stopped
+
+volumes:
+  whatsapp_data:

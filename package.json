@@ -1,0 +1,9 @@
+{
+  "name": "@buzzie-ai/monorepo",
+  "private": true,
+  "workspaces": [
+    "core",
+    "whatsapp",
+    "imessage"
+  ]
+}

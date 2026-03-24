@@ -1,0 +1,19 @@
+{
+  "name": "@buzzie-ai/core",
+  "version": "0.1.0",
+  "description": "Bidirectional channel protocol for messaging bots",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}
