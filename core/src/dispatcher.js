@@ -25,6 +25,8 @@ export function createDispatcher(config) {
     async dispatch(envelope) {
       const resolved = resolveBackend(envelope.jid);
 
+      console.log(`[dispatcher] type=${envelope.type} jid=${envelope.jid} backend=${resolved.type}${resolved.url ? ` url=${resolved.url}` : ""}`);
+
       switch (resolved.type) {
         case "builtin":
           if (!builtinHandler) {
@@ -87,10 +89,14 @@ async function handleHttp(envelope, backend) {
     });
 
     if (!res.ok) {
-      throw new Error(`HTTP backend returned ${res.status}: ${await res.text()}`);
+      const body = await res.text();
+      console.log(`[dispatcher] HTTP ${res.status} from ${url}: ${body.slice(0, 200)}`);
+      throw new Error(`HTTP backend returned ${res.status}: ${body}`);
     }
 
-    return await res.json();
+    const result = await res.json();
+    console.log(`[dispatcher] response: actions=${result.actions?.length || 0}`);
+    return result;
   } finally {
     clearTimeout(timer);
   }
