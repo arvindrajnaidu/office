@@ -220,9 +220,12 @@ export async function startBot(opts = {}) {
 
     const selfPhone = selfJid.split(":")[0].split("@")[0];
     const selfChatJid = `${selfPhone}@s.whatsapp.net`;
+    // Baileys may also use LID format for self-chat (xxx@lid)
+    const selfLid = sock.user?.lid || null;
+    const selfChatLid = selfLid ? selfLid.split(":")[0] + "@lid" : null;
 
     connected = true;
-    console.log(success(`Connected as ${jidToPhone(selfJid)}.`));
+    console.log(success(`Connected as ${jidToPhone(selfJid)}${selfChatLid ? ` (lid: ${selfChatLid})` : ""}.`));
 
     await sock.sendPresenceUpdate("available");
 
@@ -301,7 +304,8 @@ export async function startBot(opts = {}) {
         }
 
         const remoteJid = msg.key.remoteJid;
-        if (remoteJid !== selfChatJid) continue;
+        const isSelfChat = remoteJid === selfChatJid || (selfChatLid && remoteJid === selfChatLid);
+        if (!isSelfChat) continue;
 
         const ts = Number(msg.messageTimestamp || 0);
         if (ts && ts < startTs - 5) continue;
@@ -312,30 +316,32 @@ export async function startBot(opts = {}) {
 
         console.log(`[self] ${text}`);
 
+        // Use the actual remoteJid for replies (may be phone or LID format)
+        const replyJid = remoteJid;
         const cancelAck = ackTimer(msg.key);
         try {
           const history = loadConversationHistory(3600000, 20);
           const result = await processWithBackend({
             type: "self_chat",
-            jid: selfChatJid,
+            jid: replyJid,
             senderName: msg.pushName || jidToPhone(selfChatJid),
             text,
             history,
-            meta: { selfJid: selfChatJid, timestamp: new Date().toISOString() },
+            meta: { selfJid: replyJid, timestamp: new Date().toISOString() },
           });
 
           await cancelAck();
 
-          if (result.actions) await executeActions(result.actions, selfChatJid, msg.key, safeSend);
+          if (result.actions) await executeActions(result.actions, replyJid, msg.key, safeSend);
 
           if (result.text) {
-            await botReply(selfChatJid, result.text);
+            await botReply(replyJid, result.text);
           }
         } catch (err) {
           await cancelAck();
           console.log(error(`Handler error: ${err.message}`));
           try {
-            await botReply(selfChatJid, `Something went wrong: ${err.message}`);
+            await botReply(replyJid, `Something went wrong: ${err.message}`);
           } catch {
             // Socket may still be reconnecting
           }
