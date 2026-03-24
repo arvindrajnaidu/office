@@ -43,19 +43,30 @@ function cacheMessage(msg) {
 }
 
 async function safeSend(chatId, text) {
-  if (isGroupChat(chatId)) {
-    // Resolve chatId to display name
-    const chats = getChats({ limit: 200 });
-    const chat = chats.find(c => c.chatId === chatId);
-    await sendToGroupChat(chat?.displayName || chatId, text);
-  } else {
-    const handle = extractHandle(chatId);
-    await sendMessage(handle, text);
+  console.log(`[send] to=${chatId} group=${isGroupChat(chatId)}`);
+  try {
+    if (isGroupChat(chatId)) {
+      const chats = getChats({ limit: 200 });
+      const chat = chats.find(c => c.chatId === chatId);
+      const name = chat?.displayName || chatId;
+      console.log(`[send] sendToGroupChat name=${name}`);
+      await sendToGroupChat(name, text);
+    } else {
+      const handle = extractHandle(chatId);
+      console.log(`[send] sendMessage handle=${handle}`);
+      await sendMessage(handle, text);
+    }
+    console.log(`[send] ok`);
+  } catch (err) {
+    console.log(`[send] error: ${err.message}`);
+    throw err;
   }
 }
 
 async function executeActions(actions, defaultChatId) {
+  console.log(`[actions] executing ${actions.length} action(s)`);
   for (const action of actions) {
+    console.log(`[actions] ${action.type} → ${action.jid || defaultChatId}`);
     switch (action.type) {
       case "reply_text":
         await safeSend(defaultChatId, BOT_PREFIX + action.text);
@@ -64,16 +75,14 @@ async function executeActions(actions, defaultChatId) {
         await safeSend(action.jid || defaultChatId, action.text);
         break;
       case "react":
-        // Not supported on iMessage via AppleScript
-        console.log(`  [bot] sendReaction not supported on iMessage`);
+        console.log(`[actions] sendReaction not supported on iMessage`);
         break;
       case "send_image":
       case "send_document":
-        // Would need file handling — skip for now
-        console.log(`  [bot] ${action.type} not yet implemented`);
+        console.log(`[actions] ${action.type} not yet implemented`);
         break;
       default:
-        console.log(`  [bot] Unknown action type: ${action.type}`);
+        console.log(`[actions] unknown action type: ${action.type}`);
     }
   }
 }
@@ -92,6 +101,8 @@ export async function startBot(opts = {}) {
     console.log(info("No HTTP backend configured — running in builtin mode (deprecated)."));
     console.log(info("Set up the assistant app and configure:"));
     console.log(info('  backend: {"type":"http","url":"http://localhost:3000/api/chat"}'));
+  } else {
+    console.log(info(`Backend: ${backendConfig.url}`));
   }
 
   // Detect or load self handle for self-chat detection
@@ -101,7 +112,12 @@ export async function startBot(opts = {}) {
     if (selfHandle) {
       writeConfig({ selfHandle });
       console.log(info(`Auto-detected self handle: ${selfHandle}`));
+    } else {
+      console.log(info("Could not auto-detect self handle. Self-chat detection may not work."));
+      console.log(info("Set selfHandle in ~/.imessage-cli/config.json manually."));
     }
+  } else {
+    console.log(info(`Self handle: ${selfHandle}`));
   }
 
   // Build chat name map for adapter
@@ -144,21 +160,32 @@ export async function startBot(opts = {}) {
     const ts = msg.date ? Math.floor(msg.date.getTime() / 1000) : 0;
 
     // Skip old messages
-    if (ts && ts < startTs - 5) return;
+    if (ts && ts < startTs - 5) {
+      console.log(`  [skip] old message ts=${ts} startTs=${startTs}`);
+      return;
+    }
 
     const text = msg.text;
-    if (!text) return;
-    if (isBotMessage(text)) return;
+    if (!text) {
+      console.log(`  [skip] no text content`);
+      return;
+    }
+    if (isBotMessage(text)) {
+      console.log(`  [skip] bot message (has prefix)`);
+      return;
+    }
 
     if (msg.isFromMe) {
       // Self-chat: messages I sent to myself
-      // Detect self-chat by checking if the chatId contains my own handle
       const isSelfChat = selfHandle && chatId && (
         chatId.includes(selfHandle) ||
         extractHandle(chatId) === selfHandle
       );
 
-      if (!isSelfChat) return;
+      if (!isSelfChat) {
+        console.log(`  [skip] fromMe but not self-chat: chatId=${chatId} selfHandle=${selfHandle}`);
+        return;
+      }
 
       console.log(`[self] ${text}`);
 
@@ -173,27 +200,40 @@ export async function startBot(opts = {}) {
           meta: { selfJid: chatId, timestamp: new Date().toISOString() },
         });
 
+        console.log(`[self] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
+
         if (result.actions) await executeActions(result.actions, chatId);
 
         if (result.text) {
+          console.log(`[self] replying to ${chatId}`);
           await safeSend(chatId, BOT_PREFIX + result.text);
+        } else {
+          console.log(`[self] no text in response, skipping reply`);
         }
       } catch (err) {
         console.log(error(`Handler error: ${err.message}`));
         try {
           await safeSend(chatId, BOT_PREFIX + `Something went wrong: ${err.message}`);
-        } catch { /* ignore */ }
+        } catch (sendErr) {
+          console.log(error(`Failed to send error reply: ${sendErr.message}`));
+        }
       }
       return;
     }
 
     // Incoming message
-    if (readConfig().groupsEnabled === false) return;
+    if (readConfig().groupsEnabled === false) {
+      console.log(`  [skip] groups disabled`);
+      return;
+    }
 
     if (isGroupChat(chatId)) {
       // Group message — check for persona
       const persona = loadPersonaByJid(chatId);
-      if (!persona) return;
+      if (!persona) {
+        console.log(`  [skip] group ${chatId} has no persona`);
+        return;
+      }
 
       if (!checkRateLimit(chatId)) {
         console.log(info(`Rate limit hit for ${chatId}`));
@@ -218,10 +258,15 @@ export async function startBot(opts = {}) {
           meta: { selfJid: chatId, timestamp: new Date().toISOString() },
         });
 
+        console.log(`[group] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
+
         if (result.actions) await executeActions(result.actions, chatId);
 
         if (result.text) {
+          console.log(`[group] replying to ${chatId}`);
           await safeSend(chatId, BOT_PREFIX + result.text);
+        } else {
+          console.log(`[group] no text in response, skipping reply`);
         }
       } catch (err) {
         console.log(error(`Group handler error: ${err.message}`));
@@ -229,7 +274,10 @@ export async function startBot(opts = {}) {
     } else {
       // DM — check for persona
       const persona = loadPersonaByJid(chatId);
-      if (!persona) return;
+      if (!persona) {
+        console.log(`  [skip] DM ${chatId} has no persona`);
+        return;
+      }
 
       if (!checkRateLimit(chatId)) {
         console.log(info(`Rate limit hit for DM ${chatId}`));
@@ -253,10 +301,15 @@ export async function startBot(opts = {}) {
           meta: { selfJid: chatId, timestamp: new Date().toISOString() },
         });
 
+        console.log(`[dm] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
+
         if (result.actions) await executeActions(result.actions, chatId);
 
         if (result.text) {
+          console.log(`[dm] replying to ${chatId}`);
           await safeSend(chatId, BOT_PREFIX + result.text);
+        } else {
+          console.log(`[dm] no text in response, skipping reply`);
         }
       } catch (err) {
         console.log(error(`DM handler error: ${err.message}`));
