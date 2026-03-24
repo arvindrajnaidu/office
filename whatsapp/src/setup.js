@@ -84,8 +84,12 @@ export async function runSetup(opts = {}) {
           await sock.end();
           break;
         } catch (err) {
+          const code = err?.output?.statusCode ?? err?.statusCode;
           const isRetryable = err.message?.includes("Stream Errored")
-            || err.message?.includes("restart required");
+            || err.message?.includes("restart required")
+            || err.message?.includes("Connection Closed")
+            || code === 428
+            || code === 515;
           if (isRetryable && attempt < MAX_RETRIES) {
             console.log(info(`Connection dropped, retrying (${attempt}/${MAX_RETRIES})...\n`));
             continue;
