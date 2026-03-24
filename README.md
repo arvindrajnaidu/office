@@ -361,5 +361,5 @@ node email/bin/email.mjs status
   imessage/              # iMessage channel (macOS)
   email/                 # Email channel (Resend)
   assistants/            # Example assistant backends
-    whatsapp/            # Reference: Next.js assistant with LLM + tools
+    echo/                # Minimal echo assistant for testing
 ```
