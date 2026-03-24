@@ -40,6 +40,7 @@ function checkRateLimit(jid) {
 let _safeSend = null;
 
 export function botReply(jid, text) {
+  console.log(`[botReply] jid=${jid}`);
   if (_safeSend) return _safeSend(jid, { text: BOT_PREFIX + text });
   throw new Error("Bot not initialized");
 }
@@ -60,7 +61,9 @@ function cacheMessage(msg) {
  * Execute actions returned by a backend response.
  */
 async function executeActions(actions, defaultJid, msgKey, safeSend) {
+  console.log(`[actions] executing ${actions.length} action(s)`);
   for (const action of actions) {
+    console.log(`[actions] ${action.type} → ${action.jid || defaultJid}`);
     switch (action.type) {
       case "reply_text":
         await safeSend(defaultJid, { text: BOT_PREFIX + action.text });
@@ -153,12 +156,19 @@ export async function startBot(opts = {}) {
   }
 
   async function safeSend(jid, content, options) {
+    console.log(`[send] to=${jid} type=${content.text ? "text" : content.react ? "react" : "media"}`);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const sent = await sock.sendMessage(jid, content, options);
-        if (sent?.key?.id) sentByBot.add(sent.key.id);
+        if (sent?.key?.id) {
+          sentByBot.add(sent.key.id);
+          console.log(`[send] ok id=${sent.key.id}`);
+        } else {
+          console.log(`[send] ok (no key returned)`);
+        }
         return;
       } catch (err) {
+        console.log(`[send] error attempt=${attempt}: ${err.message}`);
         const isConnectionError = err?.output?.statusCode === 428
           || err.message?.includes("Connection Closed");
         if (isConnectionError && attempt === 0) {
@@ -332,10 +342,15 @@ export async function startBot(opts = {}) {
 
           await cancelAck();
 
+          console.log(`[self] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
+
           if (result.actions) await executeActions(result.actions, replyJid, msg.key, safeSend);
 
           if (result.text) {
+            console.log(`[self] replying to ${replyJid}`);
             await botReply(replyJid, result.text);
+          } else {
+            console.log(`[self] no text in response, skipping reply`);
           }
         } catch (err) {
           await cancelAck();
