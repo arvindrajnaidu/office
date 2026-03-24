@@ -35,9 +35,6 @@ jobs:
             echo "Unknown tag: $TAG" && exit 1
           fi
 
-      - run: npm install
-        working-directory: ${{ steps.pkg.outputs.dir }}
-
       - run: npm publish --access public
         working-directory: ${{ steps.pkg.outputs.dir }}
         env:
