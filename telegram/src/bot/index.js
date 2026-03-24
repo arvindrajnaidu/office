@@ -1,13 +1,12 @@
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
 import { createBot, resolveToken } from "../session.js";
 import { openDb, closeDb, upsertMessage, loadConversationHistory, loadGroupHistory } from "../db.js";
-import { readConfig, loadPersonaByJid } from "../config.js";
+import { readConfig } from "../config.js";
 import { success, error, info } from "../utils/formatters.js";
 import { createTelegramAdapter } from "../adapter.js";
 import { startScheduler } from "./scheduler.js";
 
 const BOT_PREFIX = "\u{1F916} ";
-const DEFAULT_PERSONA = "You are a helpful assistant. Be concise and relevant.";
 
 // Per-chat rate limiter
 const chatRateLimits = new Map();
@@ -120,19 +119,13 @@ export async function startBot(opts = {}) {
     if (isPrivate) {
       console.log(`[dm] ${msg.from?.first_name}: ${text.slice(0, 80)}`);
 
-      const persona = loadPersonaByJid(chatId);
-      const type = persona ? "dm" : "self_chat";
-
       try {
-        const history = type === "self_chat"
-          ? loadConversationHistory(3600000, 20)
-          : loadGroupHistory(chatId, 3600000, 10);
+        const history = loadConversationHistory(3600000, 20);
 
         const result = await processWithBackend({
-          type,
+          type: "dm",
           jid: chatId,
           groupName: msg.from?.first_name || chatId,
-          persona: persona || undefined,
           senderName: msg.from?.first_name || msg.from?.username || "User",
           text,
           history,
@@ -156,8 +149,6 @@ export async function startBot(opts = {}) {
     // ── Group trigger ───────────────────────────────────
     if (isGroup) {
       // Check if bot is mentioned or message is a reply to bot
-      const persona = loadPersonaByJid(chatId) || undefined;
-
       if (!checkRateLimit(chatId)) {
         console.log(info(`Rate limit hit for group ${chatId}`));
         return;
@@ -176,7 +167,6 @@ export async function startBot(opts = {}) {
           type: "group",
           jid: chatId,
           groupName,
-          persona,
           senderName,
           text: cleanText,
           quotedContext: null,

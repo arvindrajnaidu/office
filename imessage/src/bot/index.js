@@ -1,7 +1,7 @@
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
 import { checkAccess, createPoller, detectSelfHandle } from "../session.js";
-import { openDb, closeDb, upsertMessage, getPersonaByJid, loadConversationHistory, loadGroupHistory } from "../db.js";
-import { readConfig, writeConfig, loadPersonaByJid } from "../config.js";
+import { openDb, closeDb, upsertMessage, loadConversationHistory, loadGroupHistory } from "../db.js";
+import { readConfig, writeConfig } from "../config.js";
 import { isGroupChat, extractHandle } from "../utils/handles.js";
 import { success, error, info } from "../utils/formatters.js";
 import { sendMessage, sendToGroupChat } from "../imessage/send.js";
@@ -12,7 +12,6 @@ import { startScheduler } from "./scheduler.js";
 // All bot replies start with this prefix so we can ignore them
 const BOT_PREFIX = "\u{1F916} ";
 
-const DEFAULT_PERSONA = "You are a helpful assistant. Be concise and relevant.";
 
 // Per-chat rate limiter: Map<chatId, { count, windowStart }>
 const chatRateLimits = new Map();
@@ -231,7 +230,6 @@ export async function startBot(opts = {}) {
 
     const isGroup = isGroupChat(chatId);
     const type = isGroup ? "group" : "dm";
-    const persona = loadPersonaByJid(chatId) || undefined;
     const senderName = msg.handle || "Unknown";
     const chatName = isGroup
       ? (msg.chatDisplayName || chatNameMap.get(chatId) || chatId)
@@ -245,7 +243,6 @@ export async function startBot(opts = {}) {
         type,
         jid: chatId,
         groupName: chatName,
-        persona,
         senderName,
         text,
         quotedContext: null,

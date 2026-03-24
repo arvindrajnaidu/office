@@ -1,6 +1,6 @@
 {
   "name": "@buzzie-ai/imessage-channel",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "iMessage CLI — send messages, manage chats, and more via macOS Messages",
   "type": "module",
   "bin": {

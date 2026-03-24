@@ -5,15 +5,14 @@ import { createSocket, waitForConnection, getAuthDir, authExists } from "../sess
 import { extractBody, success, error, info } from "../utils/formatters.js";
 import { jidToPhone, isGroupJid } from "../utils/jid.js";
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
-import { openDb, closeDb, upsertMessage, getPersonaByJid, getMessageByKey, loadConversationHistory, loadGroupHistory } from "../db.js";
-import { readConfig, loadPersonaByJid, getOutputDir } from "../config.js";
+import { openDb, closeDb, upsertMessage, getMessageByKey, loadConversationHistory, loadGroupHistory } from "../db.js";
+import { readConfig, getOutputDir } from "../config.js";
 import { startScheduler } from "./scheduler.js";
 import { createWhatsAppAdapter } from "../adapter.js";
 
 // All bot replies start with this prefix so we can ignore them in the upsert handler
 const BOT_PREFIX = "\u{1F916} ";
 
-const DEFAULT_PERSONA = "You are a helpful assistant. Be concise and relevant.";
 
 const VIDEO_PLATFORM_RE = /https?:\/\/[^\s<>"']*(?:instagram\.com|instagr\.am|youtube\.com\/shorts|youtu\.be|tiktok\.com|vm\.tiktok\.com|facebook\.com\/(?:reel|watch)|fb\.watch|twitter\.com|x\.com)[^\s<>"']*/i;
 
@@ -377,9 +376,7 @@ export async function startBot(opts = {}) {
     }
 
     async function handleGroupTrigger(jid, text, senderName, quotedContext, msgKey) {
-      const persona = loadPersonaByJid(jid) || undefined;
-      const personaRow = getPersonaByJid(jid);
-      const groupName = personaRow?.group_name || groups.find(g => g.id === jid)?.subject || jid;
+      const groupName = groups.find(g => g.id === jid)?.subject || jid;
 
       if (!checkRateLimit(jid)) {
         const entry = groupRateLimits.get(jid);
@@ -400,7 +397,6 @@ export async function startBot(opts = {}) {
           type: isGroupJid(jid) ? "group" : "dm",
           jid,
           groupName,
-          persona,
           senderName,
           text,
           quotedContext,
@@ -520,7 +516,7 @@ export async function startBot(opts = {}) {
       }
     });
 
-    // ── DM persona trigger ──────────────────────────────────
+    // ── DM trigger ────────────────────────────────────────────
     sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
       for (const msg of msgs) {
         if (!msg.message) continue;
@@ -551,7 +547,6 @@ export async function startBot(opts = {}) {
         }
 
         const contactName = msg.pushName || jidToPhone(remoteJid);
-        const persona = loadPersonaByJid(remoteJid) || undefined;
         console.log(`[dm] ${contactName}: ${text.slice(0, 80)}`);
 
         const cancelAck = ackTimer(msg.key);
@@ -561,7 +556,6 @@ export async function startBot(opts = {}) {
             type: "dm",
             jid: remoteJid,
             groupName: contactName,
-            persona,
             senderName: contactName,
             text,
             quotedContext: null,

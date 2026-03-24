@@ -1,7 +1,7 @@
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
 import { createClient, resolveApiKey, resolveFromAddress } from "../session.js";
 import { openDb, closeDb, upsertReceivedEmail, upsertSentEmail, loadConversationHistory, loadGroupHistory } from "../db.js";
-import { readConfig, loadPersonaByJid } from "../config.js";
+import { readConfig } from "../config.js";
 import { success, error, info } from "../utils/formatters.js";
 import { EmailPoller } from "../poller.js";
 import { createEmailAdapter } from "../adapter.js";
@@ -103,7 +103,6 @@ export async function startBot(opts = {}) {
         type: "dm",
         jid: senderEmail,
         groupName: senderEmail,
-        persona: loadPersonaByJid(senderEmail) || undefined,
         senderName: senderEmail,
         text,
         history,
