@@ -14,10 +14,6 @@ import qrcode from "qrcode-terminal";
 
 const DEFAULT_AUTH_DIR = join(process.env.WHATSAPP_CLI_HOME || join(homedir(), ".whatsapp-cli"), "auth");
 
-// Simple in-memory message store for getMessage retries
-const messageStore = new Map();
-const MAX_STORE_SIZE = 10000;
-
 // Suppress noisy libsignal logs (raw crypto key dumps, transient decrypt failures)
 const _origInfo = console.info;
 console.info = (...args) => {
@@ -92,28 +88,18 @@ export async function createSocket(opts = {}) {
     },
     version,
     logger,
-    printQRInTerminal: false,
     browser: ["WhatsApp-CLI", "cli", "1.0.0"],
     syncFullHistory: false,
     markOnlineOnConnect: false,
+    // v7: automatic session recreation for failed decryption
+    enableAutoSessionRecreation: true,
+    // v7: built-in message cache for retry handling
+    enableRecentMessageCache: true,
     getMessage: async (key) => {
-      const id = key.remoteJid + ":" + key.id;
-      return messageStore.get(id)?.message || undefined;
+      // v7's enableRecentMessageCache handles most retries internally.
+      // This is a fallback for messages not in the built-in cache.
+      return undefined;
     },
-  });
-
-  // Store messages for retry decryption
-  sock.ev.on("messages.upsert", ({ messages }) => {
-    for (const msg of messages) {
-      if (msg.message) {
-        const id = msg.key.remoteJid + ":" + msg.key.id;
-        messageStore.set(id, msg);
-        if (messageStore.size > MAX_STORE_SIZE) {
-          const first = messageStore.keys().next().value;
-          messageStore.delete(first);
-        }
-      }
-    }
   });
 
   sock.ev.on("creds.update", () => enqueueSaveCreds(saveCreds));
