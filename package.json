@@ -7,5 +7,11 @@
     "imessage",
     "telegram",
     "email"
-  ]
+  ],
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "devDependencies": {
+    "vitest": "^3.1.1"
+  }
 }
