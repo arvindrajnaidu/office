@@ -326,8 +326,9 @@ export async function startBot(opts = {}) {
 
         console.log(`[self] ${text}`);
 
-        // Use the actual remoteJid for replies (may be phone or LID format)
-        const replyJid = remoteJid;
+        // Always reply using the phone-format JID — LID sends succeed at
+        // protocol level but don't render in WhatsApp's UI
+        const replyJid = selfChatJid;
         const cancelAck = ackTimer(msg.key);
         try {
           const history = loadConversationHistory(3600000, 20);
