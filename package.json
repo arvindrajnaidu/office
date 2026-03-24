@@ -4,6 +4,7 @@
   "workspaces": [
     "core",
     "whatsapp",
-    "imessage"
+    "imessage",
+    "telegram"
   ]
 }
