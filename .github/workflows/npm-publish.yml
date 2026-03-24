@@ -7,6 +7,7 @@ on:
       - "whatsapp-v*"
       - "imessage-v*"
       - "telegram-v*"
+      - "email-v*"
 
 jobs:
   publish:
@@ -34,6 +35,8 @@ jobs:
             echo "dir=imessage" >> $GITHUB_OUTPUT
           elif [[ "$TAG" == telegram-v* ]]; then
             echo "dir=telegram" >> $GITHUB_OUTPUT
+          elif [[ "$TAG" == email-v* ]]; then
+            echo "dir=email" >> $GITHUB_OUTPUT
           else
             echo "Unknown tag: $TAG" && exit 1
           fi

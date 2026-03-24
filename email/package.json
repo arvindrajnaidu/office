@@ -1,0 +1,33 @@
+{
+  "name": "@buzzie-ai/email-channel",
+  "version": "1.0.0",
+  "description": "Email channel CLI — send and receive emails via Resend API",
+  "type": "module",
+  "bin": {
+    "email-bot": "./bin/email.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node bin/email.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@buzzie-ai/core": "*",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "resend": "^4.0.0",
+    "zod": "^4.3.6"
+  }
+}

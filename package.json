@@ -5,6 +5,7 @@
     "core",
     "whatsapp",
     "imessage",
-    "telegram"
+    "telegram",
+    "email"
   ]
 }

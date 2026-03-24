@@ -28,6 +28,23 @@ services:
     init: true
     restart: unless-stopped
 
+  email-bot:
+    image: ${EMAIL_IMAGE:-ghcr.io/arvindrajnaidu/office/email-channel:latest}
+    build:
+      context: .
+      dockerfile: email/Dockerfile
+    environment:
+      EMAIL_CLI_HOME: /data
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - email_data:/data
+    init: true
+    restart: unless-stopped
+
 volumes:
   whatsapp_data:
   telegram_data:
+  email_data:
