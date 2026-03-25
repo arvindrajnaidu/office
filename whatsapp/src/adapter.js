@@ -147,9 +147,6 @@ export function createWhatsAppAdapter({ getSock, safeSend, selfJid, getGroups })
       });
     },
 
-      return { ok: true, file, type };
-    },
-
     async queryDb(sql) {
       return runReadOnlyQuery(sql);
     },
