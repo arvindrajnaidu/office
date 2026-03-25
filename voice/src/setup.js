@@ -78,7 +78,7 @@ export async function runSetup(opts = {}) {
     } else {
       console.log(info("Step 3/3: Enter your public webhook URL"));
       console.log("  This is where Twilio will send call events.");
-      console.log("  For dev: use ngrok (ngrok http 3100)");
+      console.log("  For dev: cloudflared tunnel --url http://localhost:3100");
       console.log("  For prod: your server's public URL\n");
       const webhookUrl = (await prompt(rl, "  > ")).trim();
       if (!webhookUrl) { console.log(error("URL required.")); process.exit(1); }
