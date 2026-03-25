@@ -516,6 +516,39 @@ export async function startBot(opts = {}) {
       }
     });
 
+    // Trigger C: All group messages — let the brain decide
+    sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
+      for (const msg of msgs) {
+        if (!msg.message) continue;
+        if (msg.key.fromMe) continue;
+
+        // Skip reactions (handled by Trigger A)
+        if (msg.message?.reactionMessage) continue;
+
+        const jid = msg.key.remoteJid;
+        if (!jid || !isGroupJid(jid)) continue;
+
+        if (msg.key.id && sentByBot.has(msg.key.id)) continue;
+
+        const ts = Number(msg.messageTimestamp || 0);
+        if (ts && ts < startTs - 5) continue;
+
+        // Skip replies to bot (handled by Trigger B)
+        const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+        const quotedText = contextInfo?.quotedMessage?.conversation
+          || contextInfo?.quotedMessage?.extendedTextMessage?.text
+          || "";
+        if (isBotMessage(quotedText)) continue;
+
+        const text = extractBody(msg);
+        if (!text) continue;
+        if (isBotMessage(text)) continue;
+
+        const senderName = msg.pushName || msg.key.participant || "Unknown";
+        await handleGroupTrigger(jid, text, senderName, null, msg.key);
+      }
+    });
+
     // ── DM trigger ────────────────────────────────────────────
     sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
       for (const msg of msgs) {
