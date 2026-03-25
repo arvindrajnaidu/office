@@ -6,7 +6,8 @@
     "whatsapp",
     "imessage",
     "telegram",
-    "email"
+    "email",
+    "voice"
   ],
   "scripts": {
     "test": "vitest --run"

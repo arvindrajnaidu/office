@@ -1,0 +1,38 @@
+{
+  "name": "@buzzie-ai/voice-channel",
+  "version": "1.0.0",
+  "description": "Voice channel — answer phone calls via Twilio with AI speech",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "voice-bot": "./bin/voice.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node bin/voice.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@buzzie-ai/core": "*",
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "openai": "^4.80.0",
+    "twilio": "^5.5.0",
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
+  }
+}

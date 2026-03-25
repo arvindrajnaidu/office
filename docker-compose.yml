@@ -44,7 +44,27 @@ services:
     init: true
     restart: unless-stopped
 
+  voice-bot:
+    image: ${VOICE_IMAGE:-ghcr.io/arvindrajnaidu/office/voice-channel:latest}
+    build:
+      context: .
+      dockerfile: voice/Dockerfile
+    ports:
+      - "3100:3100"
+    environment:
+      VOICE_CLI_HOME: /data
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_PHONE_NUMBER: ${TWILIO_PHONE_NUMBER:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+    volumes:
+      - voice_data:/data
+    init: true
+    restart: unless-stopped
+
 volumes:
   whatsapp_data:
   telegram_data:
   email_data:
+  voice_data:
