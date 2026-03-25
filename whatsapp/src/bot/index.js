@@ -1,20 +1,15 @@
-import { statSync, readFileSync } from "fs";
-import { join } from "path";
 import { DisconnectReason } from "@whiskeysockets/baileys";
 import { createSocket, waitForConnection, getAuthDir, authExists } from "../session.js";
 import { extractBody, success, error, info } from "../utils/formatters.js";
 import { jidToPhone, isGroupJid } from "../utils/jid.js";
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
-import { openDb, closeDb, upsertMessage, getMessageByKey, loadConversationHistory, loadGroupHistory } from "../db.js";
-import { readConfig, getOutputDir } from "../config.js";
+import { openDb, closeDb, upsertMessage, loadConversationHistory, loadGroupHistory } from "../db.js";
+import { readConfig } from "../config.js";
 import { startScheduler } from "./scheduler.js";
 import { createWhatsAppAdapter } from "../adapter.js";
 
 // All bot replies start with this prefix so we can ignore them in the upsert handler
 const BOT_PREFIX = "\u{1F916} ";
-
-
-const VIDEO_PLATFORM_RE = /https?:\/\/[^\s<>"']*(?:instagram\.com|instagr\.am|youtube\.com\/shorts|youtu\.be|tiktok\.com|vm\.tiktok\.com|facebook\.com\/(?:reel|watch)|fb\.watch|twitter\.com|x\.com)[^\s<>"']*/i;
 
 // Track message IDs sent by the bot so we can skip them in the self-chat listener
 const sentByBot = new Set();
@@ -364,16 +359,7 @@ export async function startBot(opts = {}) {
       }
     });
 
-    // ── Group triggers: ❓ reaction & reply-to-bot ──────────
-
-    function makeGroupContext() {
-      return {
-        groups,
-        get sock() { return sock; },
-        safeSend,
-        selfJid: selfChatJid,
-      };
-    }
+    // ── Group handler ──────────────────────────────────────
 
     async function handleGroupTrigger(jid, text, senderName, quotedContext, msgKey) {
       const groupName = groups.find(g => g.id === jid)?.subject || jid;
@@ -416,113 +402,11 @@ export async function startBot(opts = {}) {
       }
     }
 
-    // Trigger A: ❓ reaction on a message
-    sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
-      for (const msg of msgs) {
-        const reaction = msg.message?.reactionMessage;
-        if (!reaction) continue;
-
-        const jid = msg.key.remoteJid;
-        console.log(`  [reaction] emoji="${reaction.text}" jid=${jid} fromMe=${msg.key.fromMe} isGroup=${isGroupJid(jid || "")}`);
-
-        if (!jid || !isGroupJid(jid)) continue;
-
-        const reactionText = reaction.text?.replace(/[\uFE0F\uFE0E\u200D]/g, "").trim();
-        if (reactionText !== "❓") continue;
-
-        if (msg.key.id && sentByBot.has(msg.key.id)) continue;
-
-        const ts = Number(msg.messageTimestamp || 0);
-        if (ts && ts < startTs - 5) continue;
-
-        const reactedKey = reaction.key;
-        if (!reactedKey?.id) continue;
-
-        const reactedRow = getMessageByKey(jid, reactedKey.id);
-        if (!reactedRow) {
-          console.log(info(`❓ reaction in ${jid} but reacted message not in DB (msg id: ${reactedKey.id})`));
-          continue;
-        }
-
-        if (reactedRow.body && isBotMessage(reactedRow.body)) continue;
-
-        const text = reactedRow.body || "[media]";
-        const senderName = msg.pushName || msg.key.participant || "Unknown";
-
-        // Silent video download for video platform URLs
-        const videoMatch = text.match(VIDEO_PLATFORM_RE);
-        if (videoMatch) {
-          if (readConfig().groupsEnabled === false) continue;
-          if (!checkRateLimit(jid)) continue;
-
-          try {
-            const { downloadVideo } = await import("videogaga");
-            const dlPath = join(getOutputDir(), `video-${Date.now()}.mp4`);
-            const prev = process.cwd();
-            process.chdir(getOutputDir());
-            try { await downloadVideo(videoMatch[0], dlPath); } finally { process.chdir(prev); }
-
-            const size = statSync(dlPath).size;
-            if (size > 64 * 1024 * 1024) {
-              console.log(info(`Video too large (${(size / 1024 / 1024).toFixed(1)}MB), falling through to LLM`));
-            } else {
-              const videoBuffer = readFileSync(dlPath);
-              let quoted;
-              if (reactedRow.raw_message) {
-                try { quoted = JSON.parse(reactedRow.raw_message); } catch { /* ignore */ }
-              }
-              await safeSend(jid, { video: videoBuffer, mimetype: "video/mp4" }, quoted ? { quoted } : undefined);
-              continue;
-            }
-          } catch (err) {
-            console.log(error(`Video download failed for ${videoMatch[0]}: ${err.message}, falling through to LLM`));
-          }
-        }
-
-        await handleGroupTrigger(jid, text, senderName, null, msg.key);
-      }
-    });
-
-    // Trigger B: Reply to a bot message in a group
+    // ── Group trigger: forward all group messages to brain ──
     sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
       for (const msg of msgs) {
         if (!msg.message) continue;
         if (msg.key.fromMe) continue;
-
-        const jid = msg.key.remoteJid;
-        if (!jid || !isGroupJid(jid)) continue;
-
-        if (msg.key.id && sentByBot.has(msg.key.id)) continue;
-
-        const ts = Number(msg.messageTimestamp || 0);
-        if (ts && ts < startTs - 5) continue;
-
-        const contextInfo = msg.message?.extendedTextMessage?.contextInfo
-          || msg.message?.conversation && null;
-        if (!contextInfo?.quotedMessage) continue;
-
-        const quotedText = contextInfo.quotedMessage?.conversation
-          || contextInfo.quotedMessage?.extendedTextMessage?.text
-          || "";
-        if (!isBotMessage(quotedText)) continue;
-
-        const text = extractBody(msg);
-        if (!text) continue;
-
-        const senderName = msg.pushName || msg.key.participant || "Unknown";
-        const quotedContext = quotedText.replace(/^\u{1F916}\s*/u, "");
-
-        await handleGroupTrigger(jid, text, senderName, quotedContext, msg.key);
-      }
-    });
-
-    // Trigger C: All group messages — let the brain decide
-    sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
-      for (const msg of msgs) {
-        if (!msg.message) continue;
-        if (msg.key.fromMe) continue;
-
-        // Skip reactions (handled by Trigger A)
         if (msg.message?.reactionMessage) continue;
 
         const jid = msg.key.remoteJid;
@@ -532,13 +416,6 @@ export async function startBot(opts = {}) {
 
         const ts = Number(msg.messageTimestamp || 0);
         if (ts && ts < startTs - 5) continue;
-
-        // Skip replies to bot (handled by Trigger B)
-        const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
-        const quotedText = contextInfo?.quotedMessage?.conversation
-          || contextInfo?.quotedMessage?.extendedTextMessage?.text
-          || "";
-        if (isBotMessage(quotedText)) continue;
 
         const text = extractBody(msg);
         if (!text) continue;
