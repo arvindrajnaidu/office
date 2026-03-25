@@ -26,15 +26,4 @@ export function getConfigPath() {
   return CONFIG_PATH;
 }
 
-export function getOutputDir() {
-  const dir = join(CONFIG_DIR, "output");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-export function getBrowserProfileDir() {
-  const dir = join(CONFIG_DIR, "browser-profile");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
 

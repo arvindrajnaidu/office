@@ -1,10 +1,7 @@
-import { readdirSync, readFileSync, statSync, existsSync } from "fs";
-import { join, basename } from "path";
 import { jidToPhone } from "./utils/jid.js";
 import {
   getMessages,
   searchMessages as dbSearchMessages,
-  getRawMessages,
   getContactsForResolve,
   insertScheduledSend,
   listPendingSends,
@@ -14,7 +11,6 @@ import {
 import {
   readConfig,
   writeConfig,
-  getOutputDir,
 } from "./config.js";
 
 /**
@@ -151,67 +147,6 @@ export function createWhatsAppAdapter({ getSock, safeSend, selfJid, getGroups })
       });
     },
 
-    async downloadVideo(url) {
-      const { downloadVideo } = await import("videogaga");
-      const dlName = `video-${Date.now()}.mp4`;
-      const dlPath = join(getOutputDir(), dlName);
-      const prev = process.cwd();
-      process.chdir(getOutputDir());
-      try {
-        await downloadVideo(url, dlPath);
-      } finally {
-        process.chdir(prev);
-      }
-      const dlSizeMB = +(statSync(dlPath).size / (1024 * 1024)).toFixed(1);
-      return { file: dlName, sizeMB: dlSizeMB };
-    },
-
-    async createDigest(chatId, days = 7) {
-      const { handleDigest } = await import("./bot/handlers/digest.js");
-      const msgs = getRawMessages(chatId, days);
-      const groups = getGroups();
-      const group = groups.find((g) => g.id === chatId);
-      const chatName = group?.subject || chatId;
-
-      const ctx = { selfJid, safeSend };
-      const result = await handleDigest(ctx, chatName, msgs);
-      if (!result) return { error: "No videos found" };
-      return result;
-    },
-
-    async listOutputFiles(filter = "") {
-      const dir = getOutputDir();
-      const files = readdirSync(dir)
-        .filter((f) => !f.startsWith(".") && !f.startsWith("_tmp_"))
-        .map((f) => {
-          const st = statSync(join(dir, f));
-          return { name: f, sizeMB: +(st.size / (1024 * 1024)).toFixed(1), created: st.birthtime.toISOString() };
-        })
-        .sort((a, b) => b.created.localeCompare(a.created));
-      const filtered = filter ? files.filter((f) => f.name.toLowerCase().includes(filter.toLowerCase())) : files;
-      return { directory: dir, count: filtered.length, files: filtered };
-    },
-
-    async sendOutputFile(chatId, file, type = "document", caption = "") {
-      const filePath = join(getOutputDir(), basename(file));
-      if (!existsSync(filePath)) {
-        return { error: `File not found: ${file}` };
-      }
-      const buffer = readFileSync(filePath);
-      if (type === "video") {
-        await safeSend(chatId, { video: buffer, mimetype: "video/mp4", caption });
-      } else if (type === "image") {
-        const ext = file.split(".").pop()?.toLowerCase();
-        const mimetype = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : "image/jpeg";
-        await safeSend(chatId, { image: buffer, mimetype, caption });
-      } else {
-        await safeSend(chatId, {
-          document: buffer,
-          mimetype: "application/octet-stream",
-          fileName: basename(file),
-          caption,
-        });
-      }
       return { ok: true, file, type };
     },
 
