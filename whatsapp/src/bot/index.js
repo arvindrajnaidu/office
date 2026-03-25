@@ -406,7 +406,6 @@ export async function startBot(opts = {}) {
     sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
       for (const msg of msgs) {
         if (!msg.message) continue;
-        if (msg.key.fromMe) continue;
         if (msg.message?.reactionMessage) continue;
 
         const jid = msg.key.remoteJid;
@@ -430,7 +429,6 @@ export async function startBot(opts = {}) {
     sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
       for (const msg of msgs) {
         if (!msg.message) continue;
-        if (msg.key.fromMe) continue;
 
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid || isGroupJid(remoteJid)) continue;
