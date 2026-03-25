@@ -1,7 +1,6 @@
 import { join } from "path";
 import { homedir } from "os";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
-import { upsertPersona, getPersonaByJid, deletePersonaRow } from "./db.js";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 
 const CONFIG_DIR = process.env.EMAIL_CLI_HOME || join(homedir(), ".email-cli");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
@@ -33,41 +32,3 @@ export function getOutputDir() {
   return dir;
 }
 
-export function getPersonasDir() {
-  const dir = join(CONFIG_DIR, "personas");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-export function loadPersonaByJid(jid) {
-  const row = getPersonaByJid(jid);
-  if (!row) return null;
-  const filePath = join(getPersonasDir(), row.file_name);
-  try {
-    if (!existsSync(filePath)) return null;
-    const raw = readFileSync(filePath, "utf8").trim();
-    const match = raw.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
-    return match ? match[1].trim() : raw;
-  } catch {
-    return null;
-  }
-}
-
-export function savePersona(jid, groupName, content) {
-  const slug = groupName.replace(/[^a-zA-Z0-9_-]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "").slice(0, 60);
-  const fileName = `${slug}.md`;
-  const filePath = join(getPersonasDir(), fileName);
-  const frontmatter = `---\nemail: ${jid}\nname: "${groupName}"\n---\n\n`;
-  writeFileSync(filePath, frontmatter + content + "\n", "utf8");
-  upsertPersona(jid, fileName, groupName);
-  return fileName;
-}
-
-export function deletePersona(jid) {
-  const row = getPersonaByJid(jid);
-  if (!row) return false;
-  const filePath = join(getPersonasDir(), row.file_name);
-  try { if (existsSync(filePath)) unlinkSync(filePath); } catch { /* ignore */ }
-  deletePersonaRow(jid);
-  return true;
-}

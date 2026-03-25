@@ -46,13 +46,6 @@ export function openDb() {
       error         TEXT
     );
 
-    CREATE TABLE IF NOT EXISTS group_personas (
-      jid        TEXT PRIMARY KEY,
-      file_name  TEXT NOT NULL,
-      group_name TEXT,
-      created_at INTEGER NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS group_conversations (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       jid         TEXT    NOT NULL,
@@ -123,13 +116,6 @@ export function openDb() {
     markSendStatus: db.prepare(`UPDATE scheduled_sends SET status = @status, error = @error WHERE id = @id`),
     listPendingSends: db.prepare(`SELECT * FROM scheduled_sends WHERE status = 'pending' ORDER BY scheduled_at ASC`),
     cancelScheduled: db.prepare(`UPDATE scheduled_sends SET status = 'cancelled' WHERE id = @id AND status = 'pending'`),
-    upsertPersona: db.prepare(`
-      INSERT OR REPLACE INTO group_personas (jid, file_name, group_name, created_at)
-      VALUES (@jid, @fileName, @groupName, @createdAt)
-    `),
-    getPersona: db.prepare(`SELECT * FROM group_personas WHERE jid = @jid`),
-    deletePersona: db.prepare(`DELETE FROM group_personas WHERE jid = @jid`),
-    listPersonas: db.prepare(`SELECT * FROM group_personas ORDER BY created_at DESC`),
     saveGroupMsg: db.prepare(`
       INSERT INTO group_conversations (jid, role, content, sender_name, timestamp)
       VALUES (@jid, @role, @content, @senderName, @timestamp)
@@ -270,27 +256,6 @@ export function cancelScheduledSend(id) {
   if (!db || !stmts) return false;
   const result = stmts.cancelScheduled.run({ id });
   return result.changes > 0;
-}
-
-export function upsertPersona(jid, fileName, groupName) {
-  if (!db || !stmts) return;
-  stmts.upsertPersona.run({ jid, fileName, groupName, createdAt: Date.now() });
-}
-
-export function getPersonaByJid(jid) {
-  if (!db || !stmts) return null;
-  return stmts.getPersona.get({ jid }) || null;
-}
-
-export function deletePersonaRow(jid) {
-  if (!db || !stmts) return false;
-  const result = stmts.deletePersona.run({ jid });
-  return result.changes > 0;
-}
-
-export function listPersonas() {
-  if (!db || !stmts) return [];
-  return stmts.listPersonas.all();
 }
 
 export function saveGroupMessage(jid, role, content, senderName = null) {

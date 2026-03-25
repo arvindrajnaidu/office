@@ -9,16 +9,11 @@ import {
   insertScheduledSend,
   listPendingSends,
   cancelScheduledSend,
-  listPersonas,
   runReadOnlyQuery,
 } from "./db.js";
 import {
   readConfig,
   writeConfig,
-  getOutputDir,
-  loadPersonaByJid,
-  savePersona,
-  deletePersona,
 } from "./config.js";
 import { sendMessage, sendToGroupChat, sendFile, sendFileToGroupChat } from "./imessage/send.js";
 import { getChats as iMessageGetChats } from "./imessage/db.js";
@@ -154,41 +149,6 @@ export function createIMessageAdapter({ chatNameMap }) {
       }
       const links = [...urls.entries()].map(([url, platform]) => ({ url, platform }));
       return { chatId, count: links.length, links };
-    },
-
-    async getPersonas() {
-      const rows = listPersonas();
-      return rows.map(r => {
-        const content = loadPersonaByJid(r.jid);
-        const summary = content && content.length > 100 ? content.slice(0, 100) + "..." : content;
-        return {
-          jid: r.jid,
-          groupName: r.group_name,
-          fileName: r.file_name,
-          type: isGroupChat(r.jid) ? "group" : "dm",
-          personaSummary: summary,
-        };
-      });
-    },
-
-    async getPersona(jid) {
-      const content = loadPersonaByJid(jid);
-      if (content === null) return null;
-      const row = listPersonas().find(r => r.jid === jid);
-      return {
-        jid,
-        groupName: row?.group_name || jid,
-        content,
-      };
-    },
-
-    async setPersona(jid, groupName, content) {
-      const fileName = savePersona(jid, groupName, content);
-      return { ok: true, jid, groupName, fileName };
-    },
-
-    async deletePersona(jid) {
-      return deletePersona(jid);
     },
 
     async queryDb(sql) {

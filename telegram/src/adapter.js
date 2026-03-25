@@ -8,15 +8,11 @@ import {
   insertScheduledSend,
   listPendingSends,
   cancelScheduledSend,
-  listPersonas,
   runReadOnlyQuery,
 } from "./db.js";
 import {
   readConfig,
   writeConfig,
-  loadPersonaByJid,
-  savePersona,
-  deletePersona,
 } from "./config.js";
 
 /**
@@ -122,37 +118,6 @@ export function createTelegramAdapter({ getBot }) {
 
     async sendPoll(chatId, question, options) {
       await getBot().api.sendPoll(chatId, question, options);
-    },
-
-    async getPersonas() {
-      const rows = listPersonas();
-      return rows.map(r => {
-        const content = loadPersonaByJid(r.jid);
-        const summary = content && content.length > 100 ? content.slice(0, 100) + "..." : content;
-        return {
-          jid: r.jid,
-          groupName: r.group_name,
-          fileName: r.file_name,
-          type: r.jid.startsWith("-") ? "group" : "dm",
-          personaSummary: summary,
-        };
-      });
-    },
-
-    async getPersona(jid) {
-      const content = loadPersonaByJid(jid);
-      if (content === null) return null;
-      const row = listPersonas().find(r => r.jid === jid);
-      return { jid, groupName: row?.group_name || jid, content };
-    },
-
-    async setPersona(jid, groupName, content) {
-      const fileName = savePersona(jid, groupName, content);
-      return { ok: true, jid, groupName, fileName };
-    },
-
-    async deletePersona(jid) {
-      return deletePersona(jid);
     },
 
     async queryDb(sql) {
