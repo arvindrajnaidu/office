@@ -1,6 +1,6 @@
 {
   "name": "@buzzie-ai/whatsapp-channel",
-  "version": "3.5.2",
+  "version": "4.0.0",
   "description": "WhatsApp CLI using Baileys protocol",
   "type": "module",
   "main": "./src/index.js",

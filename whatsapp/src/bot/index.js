@@ -8,26 +8,29 @@ import { readConfig } from "../config.js";
 import { startScheduler } from "./scheduler.js";
 import { createWhatsAppAdapter } from "../adapter.js";
 
-// All bot replies start with this prefix so we can ignore them in the upsert handler
 const BOT_PREFIX = "\u{1F916} ";
 
-// Track message IDs sent by the bot so we can skip them in the self-chat listener
+// Track message IDs sent by the bot to prevent infinite loops
 const sentByBot = new Set();
 
-// Per-group rate limiter: Map<jid, { count, windowStart }>
-const groupRateLimits = new Map();
-const DEFAULT_RATE_LIMIT = 10; // per hour
+// Rate limiter: Map<jid, { count, windowStart }>
+const rateLimits = new Map();
+const RATE_LIMIT = 10; // per hour per chat
 
 function checkRateLimit(jid) {
   const now = Date.now();
-  const entry = groupRateLimits.get(jid);
+  const entry = rateLimits.get(jid);
   if (!entry || now - entry.windowStart > 3600000) {
-    groupRateLimits.set(jid, { count: 1, windowStart: now });
+    rateLimits.set(jid, { count: 1, windowStart: now });
     return true;
   }
-  if (entry.count >= DEFAULT_RATE_LIMIT) return false;
+  if (entry.count >= RATE_LIMIT) return false;
   entry.count++;
   return true;
+}
+
+function isBotMessage(text) {
+  return text?.startsWith(BOT_PREFIX);
 }
 
 // botReply is set once startBot wires up safeSend
@@ -39,21 +42,6 @@ export function botReply(jid, text) {
   throw new Error("Bot not initialized");
 }
 
-function isBotMessage(text) {
-  return text.startsWith(BOT_PREFIX);
-}
-
-function cacheMessage(msg) {
-  const jid = msg.key.remoteJid;
-  if (!jid) return;
-  upsertMessage(msg);
-  const sender = msg.key.fromMe ? "You" : (msg.pushName || msg.key.participant || jid);
-  console.log(`  [db] +1 ${jid} from=${sender}`);
-}
-
-/**
- * Execute actions returned by a backend response.
- */
 async function executeActions(actions, defaultJid, msgKey, safeSend) {
   console.log(`[actions] executing ${actions.length} action(s)`);
   for (const action of actions) {
@@ -85,7 +73,7 @@ async function executeActions(actions, defaultJid, msgKey, safeSend) {
         });
         break;
       default:
-        console.log(`Unknown action type: ${action.type}`);
+        console.log(`[actions] unknown type: ${action.type}`);
     }
   }
 }
@@ -102,8 +90,7 @@ export async function startBot(opts = {}) {
   const config = readConfig();
   const backendConfig = config.backend || { type: "builtin" };
   if (backendConfig.type !== "http") {
-    console.log(info("No HTTP backend configured — running in builtin mode (deprecated)."));
-    console.log(info("Set up the assistant app and configure:"));
+    console.log(info("No HTTP backend configured."));
     console.log(info('  backend: {"type":"http","url":"http://localhost:3000/api/chat"}'));
   }
 
@@ -123,30 +110,6 @@ export async function startBot(opts = {}) {
       };
       check();
     });
-  }
-
-  function ackTimer(msgKey) {
-    let sent = false;
-    const timer = setTimeout(async () => {
-      try {
-        sent = true;
-        const res = await sock.sendMessage(msgKey.remoteJid, {
-          react: { text: "👀", key: msgKey },
-        });
-        if (res?.key?.id) sentByBot.add(res.key.id);
-      } catch { /* ignore */ }
-    }, 3000);
-    return async () => {
-      clearTimeout(timer);
-      if (sent) {
-        try {
-          const res = await sock.sendMessage(msgKey.remoteJid, {
-            react: { text: "", key: msgKey },
-          });
-          if (res?.key?.id) sentByBot.add(res.key.id);
-        } catch { /* ignore */ }
-      }
-    };
   }
 
   async function safeSend(jid, content, options) {
@@ -175,6 +138,15 @@ export async function startBot(opts = {}) {
     }
   }
 
+  async function dispatch(envelope) {
+    console.log(`[dispatch] type=${envelope.type} jid=${envelope.jid}`);
+    const result = await processWithBackend(envelope);
+    console.log(`[dispatch] response: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
+    return result;
+  }
+
+  let processWithBackend;
+
   async function connect() {
     let reconnectDelay = 1000;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -185,9 +157,16 @@ export async function startBot(opts = {}) {
           verbose: opts.verbose,
         });
 
+        // Cache all messages to DB
         sock.ev.on("messages.upsert", ({ messages: msgs }) => {
           for (const msg of msgs) {
-            if (msg.message) cacheMessage(msg);
+            if (msg.message) {
+              const jid = msg.key.remoteJid;
+              if (!jid) continue;
+              upsertMessage(msg);
+              const sender = msg.key.fromMe ? "You" : (msg.pushName || msg.key.participant || jid);
+              console.log(`  [db] +1 ${jid} from=${sender}`);
+            }
           }
         });
 
@@ -224,7 +203,6 @@ export async function startBot(opts = {}) {
 
     const selfPhone = selfJid.split(":")[0].split("@")[0];
     const selfChatJid = `${selfPhone}@s.whatsapp.net`;
-    // Baileys may also use LID format for self-chat (xxx@lid)
     const selfLid = sock.user?.lid || null;
     const selfChatLid = selfLid ? selfLid.split(":")[0] + "@lid" : null;
 
@@ -233,7 +211,7 @@ export async function startBot(opts = {}) {
 
     await sock.sendPresenceUpdate("available");
 
-    // ── Load groups ──────────────────────────────────────
+    // Load groups
     console.log(info("Loading groups..."));
     try {
       const groupMap = await sock.groupFetchAllParticipating();
@@ -244,7 +222,7 @@ export async function startBot(opts = {}) {
       groups = [];
     }
 
-    // ── Adapter + Dispatcher ─────────────────────────────
+    // Adapter + Dispatcher
     const adapter = createWhatsAppAdapter({
       getSock: () => sock,
       safeSend,
@@ -257,26 +235,24 @@ export async function startBot(opts = {}) {
       groupBackends: config.groupBackends,
     });
 
-    const processWithBackend = (request) => dispatcher.dispatch(request);
+    processWithBackend = (request) => dispatcher.dispatch(request);
 
-    // ── API server (outbound push) ────────────────────────
-    let apiServer = null;
+    // API server
     const apiConfig = config.api || {};
     const apiPort = apiConfig.port || process.env.BUZZIE_API_PORT || 3100;
     const apiToken = apiConfig.token || process.env.BUZZIE_API_TOKEN;
     try {
-      apiServer = createApiServer(adapter, { token: apiToken });
+      const apiServer = createApiServer(adapter, { token: apiToken });
       await apiServer.start(Number(apiPort));
     } catch (err) {
       console.log(error(`API server failed to start: ${err.message}`));
     }
 
-    // ── Ready ──────────────────────────────────────────────
     console.log(success("Bot ready. Message yourself on WhatsApp to get started.\n"));
 
     const startTs = Math.floor(Date.now() / 1000);
 
-    // Auto-reconnect on close
+    // Auto-reconnect
     sock.ev.on("connection.update", (update) => {
       if (update.connection === "close") {
         const code = update.lastDisconnect?.error?.output?.statusCode
@@ -296,190 +272,128 @@ export async function startBot(opts = {}) {
       }
     });
 
-    // Listen for self-chat commands
+    // ── Single message handler — forward everything to brain ──
     sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
       for (const msg of msgs) {
-        if (!msg.key.fromMe) continue;
         if (!msg.message) continue;
 
+        const jid = msg.key.remoteJid;
+        if (!jid) continue;
+
+        // Loop prevention: skip bot's own outgoing messages
         if (msg.key.id && sentByBot.has(msg.key.id)) {
           sentByBot.delete(msg.key.id);
           continue;
         }
 
-        const remoteJid = msg.key.remoteJid;
-        const isSelfChat = remoteJid === selfChatJid || (selfChatLid && remoteJid === selfChatLid);
-        if (!isSelfChat) continue;
-
+        // Skip old messages replayed on connect
         const ts = Number(msg.messageTimestamp || 0);
         if (ts && ts < startTs - 5) continue;
 
-        const text = extractBody(msg);
-        if (!text) continue;
-        if (isBotMessage(text)) continue;
+        // Handle reactions — forward to brain with reaction info
+        const reaction = msg.message?.reactionMessage;
+        if (reaction) {
+          const reactionJid = msg.key.remoteJid;
+          console.log(`[reaction] ${reaction.text || "(removed)"} in ${reactionJid} by ${msg.key.fromMe ? "You" : (msg.key.participant || "Unknown")}`);
 
-        console.log(`[self] ${text}`);
+          if (!checkRateLimit(reactionJid)) continue;
 
-        // Always reply using the phone-format JID — LID sends succeed at
-        // protocol level but don't render in WhatsApp's UI
-        const replyJid = selfChatJid;
-        const cancelAck = ackTimer(msg.key);
-        try {
-          const history = loadConversationHistory(3600000, 20);
-          const result = await processWithBackend({
-            type: "self_chat",
-            jid: replyJid,
-            senderName: msg.pushName || jidToPhone(selfChatJid),
-            text,
-            history,
-            meta: { selfJid: replyJid, timestamp: new Date().toISOString() },
-          });
-
-          await cancelAck();
-
-          console.log(`[self] backend responded: text=${result.text ? "yes" : "no"} actions=${result.actions?.length || 0}`);
-
-          if (result.actions) await executeActions(result.actions, replyJid, msg.key, safeSend);
-
-          if (result.text) {
-            console.log(`[self] replying to ${replyJid}`);
-            await botReply(replyJid, result.text);
-          } else {
-            console.log(`[self] no text in response, skipping reply`);
-          }
-        } catch (err) {
-          await cancelAck();
-          console.log(error(`Handler error: ${err.message}`));
           try {
-            await botReply(replyJid, `Something went wrong: ${err.message}`);
-          } catch {
-            // Socket may still be reconnecting
+            const result = await dispatch({
+              type: isGroupJid(reactionJid) ? "group" : "dm",
+              jid: reactionJid,
+              groupName: groups.find(g => g.id === reactionJid)?.subject || reactionJid,
+              senderName: msg.pushName || msg.key.participant || "Unknown",
+              text: `[reaction: ${reaction.text || "removed"}]`,
+              history: [],
+              meta: {
+                selfJid: selfChatJid,
+                timestamp: new Date().toISOString(),
+                reaction: {
+                  emoji: reaction.text,
+                  targetMessageId: reaction.key?.id,
+                  fromMe: msg.key.fromMe,
+                },
+              },
+            });
+
+            if (result.actions) await executeActions(result.actions, reactionJid, msg.key, safeSend);
+            if (result.text) await safeSend(reactionJid, { text: BOT_PREFIX + result.text });
+          } catch (err) {
+            console.log(error(`Reaction handler error: ${err.message}`));
           }
-        }
-      }
-    });
-
-    // ── Group handler ──────────────────────────────────────
-
-    async function handleGroupTrigger(jid, text, senderName, quotedContext, msgKey) {
-      const groupName = groups.find(g => g.id === jid)?.subject || jid;
-
-      if (!checkRateLimit(jid)) {
-        const entry = groupRateLimits.get(jid);
-        const resetTime = new Date(entry.windowStart + 3600000).toLocaleTimeString();
-        console.log(info(`Rate limit hit for ${groupName}`));
-        try {
-          await botReply(selfChatJid, `⚠️ Rate limit reached for ${groupName} (${DEFAULT_RATE_LIMIT}/hr). Auto-paused until ${resetTime}.`);
-        } catch { /* ignore */ }
-        return;
-      }
-
-      console.log(`[group] ${groupName} | ${senderName}: ${text.slice(0, 80)}`);
-
-      const cancelAck = ackTimer(msgKey);
-      try {
-        const history = loadGroupHistory(jid, 3600000, 10);
-        const result = await processWithBackend({
-          type: isGroupJid(jid) ? "group" : "dm",
-          jid,
-          groupName,
-          senderName,
-          text,
-          quotedContext,
-          history,
-          meta: { selfJid: selfChatJid, timestamp: new Date().toISOString() },
-        });
-        await cancelAck();
-
-        if (result.actions) await executeActions(result.actions, jid, msgKey, safeSend);
-
-        if (result.text) {
-          await safeSend(jid, { text: BOT_PREFIX + result.text });
-        }
-      } catch (err) {
-        await cancelAck();
-        console.log(error(`Group handler error (${groupName}): ${err.message}`));
-      }
-    }
-
-    // ── Group trigger: forward all group messages to brain ──
-    sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
-      for (const msg of msgs) {
-        if (!msg.message) continue;
-        if (msg.message?.reactionMessage) continue;
-
-        const jid = msg.key.remoteJid;
-        if (!jid || !isGroupJid(jid)) continue;
-
-        if (msg.key.id && sentByBot.has(msg.key.id)) continue;
-
-        const ts = Number(msg.messageTimestamp || 0);
-        if (ts && ts < startTs - 5) continue;
-
-        const text = extractBody(msg);
-        if (!text) continue;
-        if (isBotMessage(text)) continue;
-
-        const senderName = msg.pushName || msg.key.participant || "Unknown";
-        await handleGroupTrigger(jid, text, senderName, null, msg.key);
-      }
-    });
-
-    // ── DM trigger ────────────────────────────────────────────
-    sock.ev.on("messages.upsert", async ({ messages: msgs }) => {
-      for (const msg of msgs) {
-        if (!msg.message) continue;
-
-        const remoteJid = msg.key.remoteJid;
-        if (!remoteJid || isGroupJid(remoteJid)) continue;
-        if (remoteJid === selfChatJid) continue;
-
-        if (msg.key.id && sentByBot.has(msg.key.id)) continue;
-
-        const ts = Number(msg.messageTimestamp || 0);
-        if (ts && ts < startTs - 5) continue;
-
-        const text = extractBody(msg);
-        if (!text) continue;
-        if (isBotMessage(text)) continue;
-
-        if (!checkRateLimit(remoteJid)) {
-          const entry = groupRateLimits.get(remoteJid);
-          const resetTime = new Date(entry.windowStart + 3600000).toLocaleTimeString();
-          const contactName = msg.pushName || jidToPhone(remoteJid);
-          console.log(info(`Rate limit hit for DM ${contactName}`));
-          try {
-            await botReply(selfChatJid, `⚠️ Rate limit reached for DM with ${contactName} (${DEFAULT_RATE_LIMIT}/hr). Auto-paused until ${resetTime}.`);
-          } catch { /* ignore */ }
           continue;
         }
 
-        const contactName = msg.pushName || jidToPhone(remoteJid);
-        console.log(`[dm] ${contactName}: ${text.slice(0, 80)}`);
+        // Extract text
+        const text = extractBody(msg);
+        if (!text) continue;
 
-        const cancelAck = ackTimer(msg.key);
+        // Skip bot's own replies (prevents re-processing)
+        if (isBotMessage(text)) continue;
+
+        // ── Self-chat ──
+        const isSelfChat = jid === selfChatJid || (selfChatLid && jid === selfChatLid);
+        if (isSelfChat && msg.key.fromMe) {
+          console.log(`[self] ${text}`);
+
+          const replyJid = selfChatJid;
+          try {
+            const history = loadConversationHistory(3600000, 20);
+            const result = await dispatch({
+              type: "self_chat",
+              jid: replyJid,
+              senderName: msg.pushName || jidToPhone(selfChatJid),
+              text,
+              history,
+              meta: { selfJid: replyJid, timestamp: new Date().toISOString() },
+            });
+
+            if (result.actions) await executeActions(result.actions, replyJid, msg.key, safeSend);
+            if (result.text) {
+              await botReply(replyJid, result.text);
+            }
+          } catch (err) {
+            console.log(error(`Self-chat handler error: ${err.message}`));
+            try { await botReply(selfChatJid, `Something went wrong: ${err.message}`); } catch { /* ignore */ }
+          }
+          continue;
+        }
+
+        // Skip self-chat echo (fromMe=false copy)
+        if (isSelfChat) continue;
+
+        // ── Group or DM ──
+        const isGroup = isGroupJid(jid);
+        const type = isGroup ? "group" : "dm";
+        const chatName = isGroup
+          ? (groups.find(g => g.id === jid)?.subject || jid)
+          : (msg.pushName || jidToPhone(jid));
+        const senderName = msg.pushName || msg.key.participant || "Unknown";
+
+        if (!checkRateLimit(jid)) {
+          console.log(info(`Rate limit hit for ${chatName}`));
+          continue;
+        }
+
+        console.log(`[${type}] ${chatName} | ${senderName}: ${text.slice(0, 80)}`);
+
         try {
-          const history = loadGroupHistory(remoteJid, 3600000, 10);
-          const result = await processWithBackend({
-            type: "dm",
-            jid: remoteJid,
-            groupName: contactName,
-            senderName: contactName,
+          const history = loadGroupHistory(jid, 3600000, 10);
+          const result = await dispatch({
+            type,
+            jid,
+            groupName: chatName,
+            senderName,
             text,
-            quotedContext: null,
             history,
             meta: { selfJid: selfChatJid, timestamp: new Date().toISOString() },
           });
-          await cancelAck();
 
-          if (result.actions) await executeActions(result.actions, remoteJid, msg.key, safeSend);
-
-          if (result.text) {
-            await safeSend(remoteJid, { text: BOT_PREFIX + result.text });
-          }
+          if (result.actions) await executeActions(result.actions, jid, msg.key, safeSend);
+          if (result.text) await safeSend(jid, { text: BOT_PREFIX + result.text });
         } catch (err) {
-          await cancelAck();
-          console.log(error(`DM handler error (${contactName}): ${err.message}`));
+          console.log(error(`${type} handler error (${chatName}): ${err.message}`));
         }
       }
     });
