@@ -1,6 +1,6 @@
 {
   "name": "@buzzie-ai/email-channel",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Email channel CLI — send and receive emails via Resend API",
   "type": "module",
   "bin": {
