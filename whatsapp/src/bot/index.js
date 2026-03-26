@@ -155,6 +155,7 @@ export async function startBot(opts = {}) {
           authDir,
           printQr: true,
           verbose: opts.verbose,
+          syncFullHistory: config.syncFullHistory ?? false,
         });
 
         // Cache all messages to DB

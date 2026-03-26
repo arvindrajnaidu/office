@@ -89,7 +89,7 @@ export async function createSocket(opts = {}) {
     version,
     logger,
     browser: ["WhatsApp-CLI", "cli", "1.0.0"],
-    syncFullHistory: true,
+    syncFullHistory: opts.syncFullHistory ?? false,
     markOnlineOnConnect: false,
     // v7: automatic session recreation for failed decryption
     enableAutoSessionRecreation: true,
