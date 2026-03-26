@@ -27,7 +27,7 @@ export function getConfigPath() {
 }
 
 export function resolveWebhookUrl(config) {
-  return process.env.WEBHOOK_URL || config.webhookUrl || null;
+  return (process.env.WEBHOOK_URL || config.webhookUrl || "").trim() || null;
 }
 
 export function resolveTwilioConfig(config) {
