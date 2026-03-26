@@ -19,7 +19,7 @@ export async function textToSpeech(text, opts = {}) {
     model: opts.model || "gpt-4o-mini-tts",
     voice: opts.voice || "nova",
     input: text,
-    response_format: "pcm16",
+    response_format: "pcm",
   });
 
   const arrayBuffer = await response.arrayBuffer();
