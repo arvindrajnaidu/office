@@ -1,6 +1,6 @@
 {
   "name": "@buzzie-ai/voice-channel",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Voice channel — answer phone calls via Twilio with AI speech",
   "type": "module",
   "main": "./src/index.js",
