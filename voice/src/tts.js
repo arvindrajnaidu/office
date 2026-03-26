@@ -2,14 +2,13 @@ import OpenAI from "openai";
 
 /**
  * Convert text to speech audio using OpenAI TTS API.
- * Returns a Buffer of audio in the specified format.
+ * Returns a Buffer of PCM audio (24kHz 16-bit mono).
  *
  * @param {string} text - Text to speak
  * @param {object} opts
  * @param {string} opts.apiKey - OpenAI API key
  * @param {string} [opts.voice] - Voice name (default "nova")
  * @param {string} [opts.model] - Model name (default "gpt-4o-mini-tts")
- * @param {string} [opts.format] - Audio format (default "pcm16")
  * @returns {Promise<Buffer>}
  */
 export async function textToSpeech(text, opts = {}) {
@@ -27,15 +26,24 @@ export async function textToSpeech(text, opts = {}) {
 }
 
 /**
- * Convert PCM16 audio to mu-law for Twilio.
- * Twilio media streams expect mu-law 8kHz mono.
+ * Convert PCM audio (24kHz 16-bit mono) to mu-law (8kHz mono) for Twilio.
+ * Downsamples 3:1 (24kHz → 8kHz) then encodes to mu-law.
  */
-export function pcm16ToMulaw(pcmBuffer) {
-  const mulaw = Buffer.alloc(pcmBuffer.length / 2);
-  for (let i = 0; i < mulaw.length; i++) {
-    const sample = pcmBuffer.readInt16LE(i * 2);
+export function pcmToMulaw(pcmBuffer) {
+  const INPUT_RATE = 24000;
+  const OUTPUT_RATE = 8000;
+  const RATIO = INPUT_RATE / OUTPUT_RATE; // 3
+
+  const numInputSamples = pcmBuffer.length / 2;
+  const numOutputSamples = Math.floor(numInputSamples / RATIO);
+  const mulaw = Buffer.alloc(numOutputSamples);
+
+  for (let i = 0; i < numOutputSamples; i++) {
+    const srcIndex = Math.floor(i * RATIO);
+    const sample = pcmBuffer.readInt16LE(srcIndex * 2);
     mulaw[i] = linearToMulaw(sample);
   }
+
   return mulaw;
 }
 

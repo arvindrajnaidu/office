@@ -1,6 +1,6 @@
 import { WebSocketServer } from "ws";
 import { createSTTSession } from "./stt.js";
-import { textToSpeech, pcm16ToMulaw } from "./tts.js";
+import { textToSpeech, pcmToMulaw } from "./tts.js";
 import { addTranscript } from "./db.js";
 
 /**
@@ -54,7 +54,7 @@ export function createMediaStreamServer(opts) {
             apiKey: openaiApiKey,
             voice: ttsVoice,
           });
-          const mulawAudio = pcm16ToMulaw(pcmAudio);
+          const mulawAudio = pcmToMulaw(pcmAudio);
 
           // Send audio in chunks (Twilio expects base64 mu-law in JSON messages)
           const chunkSize = 640; // ~80ms at 8kHz
