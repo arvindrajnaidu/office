@@ -63,6 +63,33 @@ export async function startBot(opts = {}) {
     server: webhookServer,
     openaiApiKey: openaiKey,
     ttsVoice,
+    onConnect: async (callSid, fromNumber) => {
+      console.log(`[bot] call connected: ${fromNumber || callSid}`);
+
+      try {
+        const history = loadConversationHistory(3600000, 20);
+        const result = await dispatcher.dispatch({
+          type: "dm",
+          jid: fromNumber || callSid,
+          groupName: fromNumber || callSid,
+          senderName: fromNumber || "Caller",
+          text: "",
+          history,
+          meta: {
+            selfJid: twilio.phoneNumber,
+            timestamp: new Date().toISOString(),
+            channel: "voice",
+            callSid,
+            event: "call_connected",
+          },
+        });
+
+        return result.text || null;
+      } catch (err) {
+        console.log(error(`Greeting dispatch error: ${err.message}`));
+        return null;
+      }
+    },
     onSpeech: async (callSid, text, fromNumber) => {
       console.log(`[bot] dispatching: ${fromNumber}: ${text.slice(0, 80)}`);
 

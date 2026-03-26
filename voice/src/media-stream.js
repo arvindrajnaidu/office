@@ -12,10 +12,11 @@ import { addTranscript } from "./db.js";
  * @param {string} opts.openaiApiKey - OpenAI API key
  * @param {string} opts.ttsVoice - TTS voice name
  * @param {Function} opts.onSpeech - async (callSid, text, fromNumber) => response text
+ * @param {Function} [opts.onConnect] - async (callSid, fromNumber) => greeting text (optional)
  * @returns {WebSocketServer}
  */
 export function createMediaStreamServer(opts) {
-  const { server, openaiApiKey, ttsVoice, onSpeech } = opts;
+  const { server, openaiApiKey, ttsVoice, onSpeech, onConnect } = opts;
 
   const wss = new WebSocketServer({ server, path: "/media-stream" });
 
@@ -104,6 +105,50 @@ export function createMediaStreamServer(opts) {
             streamSid = msg.start?.streamSid;
             fromNumber = msg.start?.customParameters?.from || null;
             console.log(`[media] stream started: callSid=${callSid} from=${fromNumber}`);
+
+            // Notify brain of connection so it can send a greeting
+            if (onConnect) {
+              (async () => {
+                isSpeaking = true;
+                try {
+                  const greeting = await onConnect(callSid, fromNumber);
+                  if (!greeting) { isSpeaking = false; return; }
+
+                  console.log(`[media] greeting: ${greeting.slice(0, 80)}`);
+                  addTranscript(callSid, "assistant", greeting);
+
+                  const pcmAudio = await textToSpeech(greeting, {
+                    apiKey: openaiApiKey,
+                    voice: ttsVoice,
+                  });
+                  const mulawAudio = pcmToMulaw(pcmAudio);
+
+                  const chunkSize = 640;
+                  for (let i = 0; i < mulawAudio.length; i += chunkSize) {
+                    const chunk = mulawAudio.subarray(i, i + chunkSize);
+                    if (ws.readyState === ws.OPEN && streamSid) {
+                      ws.send(JSON.stringify({
+                        event: "media",
+                        streamSid,
+                        media: { payload: chunk.toString("base64") },
+                      }));
+                    }
+                  }
+
+                  if (ws.readyState === ws.OPEN && streamSid) {
+                    ws.send(JSON.stringify({
+                      event: "mark",
+                      streamSid,
+                      mark: { name: `greeting-${Date.now()}` },
+                    }));
+                  }
+                } catch (err) {
+                  console.log(`[media] greeting error: ${err.message}`);
+                } finally {
+                  isSpeaking = false;
+                }
+              })();
+            }
             break;
 
           case "media":
