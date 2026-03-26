@@ -3,6 +3,10 @@
   "version": "1.1.0",
   "description": "iMessage CLI — send messages, manage chats, and more via macOS Messages",
   "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
   "bin": {
     "imessage": "./bin/imessage.mjs"
   },
