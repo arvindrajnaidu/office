@@ -4,6 +4,7 @@ import { readConfig, resolveTwilioConfig, resolveOpenAIKey, resolveWebhookUrl, r
 import { createWebhookServer } from "../webhook.js";
 import { createMediaStreamServer } from "../media-stream.js";
 import { createVoiceAdapter } from "../adapter.js";
+import { createTwilioClient } from "../session.js";
 import { success, error, info } from "../utils/formatters.js";
 
 export async function startBot(opts = {}) {
@@ -100,16 +101,35 @@ export async function startBot(opts = {}) {
   }
 
   // Start listening
-  webhookServer.listen(Number(apiPort), () => {
+  webhookServer.listen(Number(apiPort), async () => {
     console.log(success(`Voice bot ready on port ${apiPort}`));
     console.log(info(`Phone: ${twilio.phoneNumber}`));
     console.log(info(`Webhook: ${webhookUrl}/voice/incoming`));
     console.log(info(`Media stream: ${webhookUrl.replace(/^http/, "ws")}/media-stream`));
     console.log(info(`TTS voice: ${ttsVoice}`));
-    console.log();
-    console.log(info("Configure your Twilio phone number webhook:"));
-    console.log(info(`  Voice URL: ${webhookUrl}/voice/incoming (POST)`));
-    console.log(info(`  Status URL: ${webhookUrl}/voice/status (POST)`));
+
+    // Auto-configure Twilio phone number webhooks
+    try {
+      const client = createTwilioClient(twilio.accountSid, twilio.authToken);
+      const numbers = await client.incomingPhoneNumbers.list({ phoneNumber: twilio.phoneNumber });
+      if (numbers.length > 0) {
+        await numbers[0].update({
+          voiceUrl: `${webhookUrl}/voice/incoming`,
+          voiceMethod: "POST",
+          statusCallback: `${webhookUrl}/voice/status`,
+          statusCallbackMethod: "POST",
+        });
+        console.log(success("Twilio webhooks configured automatically."));
+      } else {
+        console.log(info(`Phone number ${twilio.phoneNumber} not found in Twilio. Configure webhooks manually.`));
+      }
+    } catch (err) {
+      console.log(error(`Failed to auto-configure Twilio: ${err.message}`));
+      console.log(info("Configure manually:"));
+      console.log(info(`  Voice URL: ${webhookUrl}/voice/incoming (POST)`));
+      console.log(info(`  Status URL: ${webhookUrl}/voice/status (POST)`));
+    }
+
     console.log();
   });
 
