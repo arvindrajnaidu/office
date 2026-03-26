@@ -170,6 +170,18 @@ export async function startBot(opts = {}) {
           }
         });
 
+        // Cache history sync messages (replayed on connect / re-link)
+        sock.ev.on("messaging-history.set", ({ messages: msgs, progress }) => {
+          let count = 0;
+          for (const msg of msgs) {
+            if (msg.message && msg.key?.remoteJid) {
+              upsertMessage(msg);
+              count++;
+            }
+          }
+          console.log(info(`History sync: ${count} messages cached${progress != null ? ` (${progress}% done)` : ""}`));
+        });
+
         await waitForConnection(sock);
         break;
       } catch (err) {
