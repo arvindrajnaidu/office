@@ -88,7 +88,7 @@ export async function createSocket(opts = {}) {
     },
     version,
     logger,
-    browser: ["WhatsApp-CLI", "cli", "1.0.0"],
+    browser: opts.syncFullHistory ? ["Mac OS", "Desktop", "1.0.0"] : ["WhatsApp-CLI", "cli", "1.0.0"],
     syncFullHistory: opts.syncFullHistory ?? false,
     markOnlineOnConnect: false,
     // v7: automatic session recreation for failed decryption
