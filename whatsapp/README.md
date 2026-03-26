@@ -140,11 +140,35 @@ The setup wizard writes to `~/.whatsapp-cli/config.json`:
 {
   "llmProvider": "anthropic",
   "llmKey": "sk-...",
-  "setupComplete": true
+  "setupComplete": true,
+  "syncFullHistory": true,
+  "backend": {
+    "type": "http",
+    "url": "http://localhost:3000/api/chat"
+  }
 }
 ```
 
 Environment variables take precedence over the config file.
+
+### History sync
+
+When `syncFullHistory` is set to `true` in the config file, WhatsApp will send full message history on device link. All synced messages are cached in the local SQLite database, giving your backend context from earlier conversations.
+
+**Important:** History sync is negotiated during device registration (QR code scan), not on every reconnect. To enable it on an existing session, you need to re-link:
+
+```bash
+whatsapp logout
+whatsapp login    # scan QR code — full history will sync
+```
+
+When the sync is running, you'll see progress logs:
+
+```
+History sync: 347 messages cached (40% done)
+History sync: 512 messages cached (80% done)
+History sync: 89 messages cached (100% done)
+```
 
 ## Docker
 
