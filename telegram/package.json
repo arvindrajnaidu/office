@@ -1,6 +1,6 @@
 {
   "name": "@buzzie-ai/telegram-channel",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Telegram channel CLI — send messages, manage chats, and more via Telegram Bot API",
   "type": "module",
   "main": "./src/index.js",
