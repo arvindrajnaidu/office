@@ -155,7 +155,7 @@ export async function startBot(opts = {}) {
           authDir,
           printQr: true,
           verbose: opts.verbose,
-          syncFullHistory: config.syncFullHistory ?? false,
+          syncFullHistory: config.syncFullHistory ?? true,
         });
 
         // Cache all messages to DB
@@ -172,7 +172,7 @@ export async function startBot(opts = {}) {
         });
 
         // Cache history sync messages (replayed on connect / re-link)
-        sock.ev.on("messaging-history.set", ({ messages: msgs, progress }) => {
+        sock.ev.on("messaging-history.set", ({ messages: msgs = [], progress }) => {
           let count = 0;
           for (const msg of msgs) {
             if (msg.message && msg.key?.remoteJid) {
@@ -180,7 +180,9 @@ export async function startBot(opts = {}) {
               count++;
             }
           }
-          console.log(info(`History sync: ${count} messages cached${progress != null ? ` (${progress}% done)` : ""}`));
+          if (count > 0) {
+            console.log(info(`History sync: ${count} messages cached${progress != null ? ` (${progress}% done)` : ""}`));
+          }
         });
 
         await waitForConnection(sock);
