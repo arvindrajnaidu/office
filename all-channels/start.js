@@ -182,8 +182,20 @@ async function main() {
   if (skipped.length > 0) console.log(`  skipped: ${skipped.join(", ")}`);
 
   if (started.length === 0) {
-    console.error("\nNo channels configured. Set environment variables and try again.");
-    console.error("See README.md for required variables per channel.");
+    console.error("\nNo channels configured. Pass environment variables to enable channels:\n");
+    console.error("  BACKEND_URL                  Your brain's HTTP endpoint (required)");
+    console.error("");
+    console.error("  WhatsApp    Pre-seed auth in $WHATSAPP_CLI_HOME/auth/creds.json");
+    console.error("  Telegram    TELEGRAM_BOT_TOKEN       Bot token from @BotFather");
+    console.error("  Email       RESEND_API_KEY            Resend API key");
+    console.error("              EMAIL_FROM                Sender address");
+    console.error("  Voice       TWILIO_ACCOUNT_SID        Twilio account SID");
+    console.error("              TWILIO_AUTH_TOKEN          Twilio auth token");
+    console.error("              TWILIO_PHONE_NUMBER        Twilio phone number");
+    console.error("              OPENAI_API_KEY             OpenAI key (STT/TTS)");
+    console.error("              WEBHOOK_URL                Public URL for callbacks");
+    console.error("");
+    console.error("  Docs: https://github.com/arvindrajnaidu/office/tree/main/all-channels");
     process.exit(1);
   }
 

@@ -1,7 +1,9 @@
 FROM node:22-alpine
 
 LABEL org.opencontainers.image.title="Buzzie AI — All Channels" \
-  org.opencontainers.image.description="Unified container running WhatsApp, Telegram, Email, and Voice channels"
+  org.opencontainers.image.description="Unified container running WhatsApp, Telegram, Email, and Voice channels" \
+  org.opencontainers.image.url="https://github.com/arvindrajnaidu/office/tree/main/all-channels" \
+  org.opencontainers.image.documentation="https://github.com/arvindrajnaidu/office/tree/main/all-channels/README.md"
 
 RUN apk add --no-cache git python3 make g++
 
