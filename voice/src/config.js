@@ -45,3 +45,16 @@ export function resolveOpenAIKey(config) {
 export function resolveTtsVoice(config) {
   return process.env.TTS_VOICE || config.ttsVoice || "nova";
 }
+
+export function resolveBackendConfig(config) {
+  const url = process.env.BACKEND_URL;
+  if (url) {
+    const backend = { type: "http", url };
+    const token = process.env.BUZZIE_API_TOKEN;
+    if (token) {
+      backend.headers = { Authorization: `Bearer ${token}` };
+    }
+    return backend;
+  }
+  return config.backend || { type: "builtin" };
+}

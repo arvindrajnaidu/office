@@ -1,6 +1,6 @@
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
 import { openDb, closeDb, upsertCall, updateCallStatus, loadConversationHistory } from "../db.js";
-import { readConfig, resolveTwilioConfig, resolveOpenAIKey, resolveWebhookUrl, resolveTtsVoice } from "../config.js";
+import { readConfig, resolveTwilioConfig, resolveOpenAIKey, resolveWebhookUrl, resolveTtsVoice, resolveBackendConfig } from "../config.js";
 import { createWebhookServer } from "../webhook.js";
 import { createMediaStreamServer } from "../media-stream.js";
 import { createVoiceAdapter } from "../adapter.js";
@@ -29,7 +29,7 @@ export async function startBot(opts = {}) {
     process.exit(1);
   }
 
-  const backendConfig = config.backend || { type: "builtin" };
+  const backendConfig = resolveBackendConfig(config);
   if (backendConfig.type !== "http") {
     console.log(info("No HTTP backend configured."));
     console.log(info('  backend: {"type":"http","url":"http://localhost:3000/api/chat"}'));
