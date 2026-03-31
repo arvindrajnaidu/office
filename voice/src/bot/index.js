@@ -38,7 +38,7 @@ export async function startBot(opts = {}) {
   // Adapter + Dispatcher
   const adapter = createVoiceAdapter();
   const dispatcher = createDispatcher({
-    backend: config.backend,
+    backend: backendConfig,
     groupBackends: config.groupBackends,
   });
 
