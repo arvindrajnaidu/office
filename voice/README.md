@@ -44,10 +44,7 @@ npm start
    - Used for both speech-to-text (Realtime API) and text-to-speech
 
 3. **Public webhook URL** — Twilio needs to reach your server
-   - **Development:** use [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
-     ```bash
-     cloudflared tunnel --url http://localhost:3100
-     ```
+   - **Development:** use a tunnel to expose `localhost:3100` publicly
    - **Production:** your server's public URL
 
 ## Usage
@@ -131,7 +128,7 @@ The setup wizard writes to `~/.voice-cli/config.json`:
   "twilioAuthToken": "auth_token",
   "twilioPhoneNumber": "+18005551234",
   "openaiApiKey": "sk-...",
-  "webhookUrl": "https://your-tunnel.trycloudflare.com",
+  "webhookUrl": "https://your-server.example.com",
   "ttsVoice": "nova",
   "setupComplete": true,
   "backend": {

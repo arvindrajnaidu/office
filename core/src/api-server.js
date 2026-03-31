@@ -46,6 +46,11 @@ export function createApiServer(adapter, options = {}) {
       return;
     }
 
+    // Health check — no auth required
+    if (req.method === "GET" && req.url === "/health") {
+      return json(res, 200, { status: "ok" });
+    }
+
     if (!checkAuth(req)) {
       return json(res, 401, { error: "Unauthorized" });
     }
