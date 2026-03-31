@@ -63,8 +63,25 @@ services:
     init: true
     restart: unless-stopped
 
+  # ── Unified: all channels in one container ──
+  # buzzie:
+  #   build:
+  #     context: .
+  #     dockerfile: all-channels/Dockerfile
+  #   ports:
+  #     - "3100:3100"
+  #     - "3101:3101"
+  #     - "3102:3102"
+  #     - "3103:3103"
+  #   env_file: .env
+  #   volumes:
+  #     - buzzie_data:/data
+  #   init: true
+  #   restart: unless-stopped
+
 volumes:
   whatsapp_data:
   telegram_data:
   email_data:
   voice_data:
+  # buzzie_data:
