@@ -1,10 +1,11 @@
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
 import { openDb, closeDb, upsertCall, updateCallStatus, loadConversationHistory } from "../db.js";
-import { readConfig, resolveTwilioConfig, resolveOpenAIKey, resolveWebhookUrl, resolveTtsVoice, resolveBackendConfig } from "../config.js";
+import { readConfig, resolveTwilioConfig, resolveOpenAIKey, resolveWebhookUrl, resolveTtsVoice, resolveTtsInstructions, resolveBackendConfig } from "../config.js";
 import { createWebhookServer } from "../webhook.js";
 import { createMediaStreamServer } from "../media-stream.js";
 import { createVoiceAdapter } from "../adapter.js";
 import { createTwilioClient } from "../session.js";
+import { textToSpeech, pcmToMulaw } from "../tts.js";
 import { success, error, info } from "../utils/formatters.js";
 
 export async function startBot(opts = {}) {
@@ -15,6 +16,7 @@ export async function startBot(opts = {}) {
   const openaiKey = resolveOpenAIKey(config);
   const webhookUrl = resolveWebhookUrl(config);
   const ttsVoice = resolveTtsVoice(config);
+  const ttsInstructions = resolveTtsInstructions(config);
 
   if (!twilio.accountSid || !twilio.authToken) {
     console.log(error("Twilio credentials not configured. Run setup."));
@@ -58,11 +60,36 @@ export async function startBot(opts = {}) {
     },
   });
 
+  // Greeting audio cache: if the brain returns the same greeting text across calls,
+  // we reuse pre-synthesized mu-law bytes so the caller hears "hello" instantly
+  // instead of waiting for a TTS round-trip.
+  const greetingCache = new Map();
+
+  async function getGreetingAudio(text) {
+    if (!text) return null;
+    const cached = greetingCache.get(text);
+    if (cached) return cached;
+    try {
+      const pcm = await textToSpeech(text, {
+        apiKey: openaiKey,
+        voice: ttsVoice,
+        instructions: ttsInstructions,
+      });
+      const mulaw = pcmToMulaw(pcm);
+      greetingCache.set(text, mulaw);
+      return mulaw;
+    } catch (err) {
+      console.log(error(`Greeting synth error: ${err.message}`));
+      return null;
+    }
+  }
+
   // Attach media stream WebSocket to the same HTTP server
   createMediaStreamServer({
     server: webhookServer,
     openaiApiKey: openaiKey,
     ttsVoice,
+    ttsInstructions,
     onConnect: async (callSid, fromNumber) => {
       console.log(`[bot] call connected: ${fromNumber || callSid}`);
 
@@ -84,7 +111,10 @@ export async function startBot(opts = {}) {
           },
         });
 
-        return result.text || null;
+        const text = result.text || null;
+        if (!text) return null;
+        const audio = await getGreetingAudio(text);
+        return { text, audio };
       } catch (err) {
         console.log(error(`Greeting dispatch error: ${err.message}`));
         return null;
@@ -134,6 +164,7 @@ export async function startBot(opts = {}) {
     console.log(info(`Webhook: ${webhookUrl}/voice/incoming`));
     console.log(info(`Media stream: ${webhookUrl.replace(/^http/, "ws")}/media-stream`));
     console.log(info(`TTS voice: ${ttsVoice}`));
+    console.log(info(`TTS tone:  ${ttsInstructions.slice(0, 70)}${ttsInstructions.length > 70 ? "…" : ""}`));
 
     // Auto-configure Twilio phone number webhooks
     try {

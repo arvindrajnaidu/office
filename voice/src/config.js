@@ -43,7 +43,16 @@ export function resolveOpenAIKey(config) {
 }
 
 export function resolveTtsVoice(config) {
-  return process.env.TTS_VOICE || config.ttsVoice || "nova";
+  return process.env.TTS_VOICE || config.ttsVoice || "coral";
+}
+
+const DEFAULT_TTS_INSTRUCTIONS =
+  "Speak warmly and conversationally, like a helpful friend on the phone. " +
+  "Use natural pacing with brief pauses between thoughts. " +
+  "Do not sound like a customer service agent or IVR system.";
+
+export function resolveTtsInstructions(config) {
+  return process.env.TTS_INSTRUCTIONS || config.ttsInstructions || DEFAULT_TTS_INSTRUCTIONS;
 }
 
 export function resolveBackendConfig(config) {

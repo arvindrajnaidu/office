@@ -8,11 +8,12 @@ import { WebSocket } from "ws";
  * @param {string} opts.apiKey - OpenAI API key
  * @param {string} [opts.model] - Model (default "gpt-4o-transcribe")
  * @param {Function} opts.onTranscript - Called with final transcript text
+ * @param {Function} [opts.onSpeechStart] - Called when server VAD detects speech start (for barge-in)
  * @param {Function} [opts.onError] - Called on error
  * @returns {{ sendAudio(base64Audio: string): void, close(): void }}
  */
 export function createSTTSession(opts) {
-  const { apiKey, model = "gpt-4o-transcribe", onTranscript, onError } = opts;
+  const { apiKey, model = "gpt-4o-transcribe", onTranscript, onSpeechStart, onError } = opts;
 
   const url = "wss://api.openai.com/v1/realtime?intent=transcription";
   const ws = new WebSocket(url, {
@@ -37,7 +38,8 @@ export function createSTTSession(opts) {
         turn_detection: {
           type: "server_vad",
           threshold: 0.5,
-          silence_duration_ms: 800,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500,
         },
       },
     }));
@@ -53,6 +55,10 @@ export function createSTTSession(opts) {
         if (text) {
           onTranscript(text);
         }
+      }
+
+      if (event.type === "input_audio_buffer.speech_started") {
+        onSpeechStart?.();
       }
 
       if (event.type === "error") {

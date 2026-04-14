@@ -87,14 +87,18 @@ const channels = [
       return !!process.env.TWILIO_ACCOUNT_SID;
     },
     configExtras() {
-      return {
+      const extras = {
         twilioAccountSid: process.env.TWILIO_ACCOUNT_SID,
         twilioAuthToken: process.env.TWILIO_AUTH_TOKEN,
         twilioPhoneNumber: process.env.TWILIO_PHONE_NUMBER,
         openaiApiKey: process.env.OPENAI_API_KEY,
         webhookUrl: process.env.WEBHOOK_URL,
-        ttsVoice: process.env.TTS_VOICE || "nova",
+        ttsVoice: process.env.TTS_VOICE || "coral",
       };
+      if (process.env.TTS_INSTRUCTIONS) {
+        extras.ttsInstructions = process.env.TTS_INSTRUCTIONS;
+      }
+      return extras;
     },
     async start() {
       const { startBot } = await import("../voice/src/index.js");
