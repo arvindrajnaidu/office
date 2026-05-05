@@ -29,6 +29,7 @@ export function registerSendImage(program) {
         console.log(success(`Image sent to ${jid}`));
 
         await sock.end();
+        process.exit(0);
       } catch (err) {
         console.error(error("Failed to send image: " + err.message));
         process.exit(1);

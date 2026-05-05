@@ -46,7 +46,7 @@ export function registerLogin(program) {
           const me = sock.user;
           console.log("\n" + success(`Linked as ${me?.name || jidToPhone(me?.id)} (${jidToPhone(me?.id)})`));
           await sock.end();
-          return;
+          process.exit(0);
         } catch (err) {
           const isStreamError = err.message?.includes("Stream Errored")
             || err.message?.includes("restart required");

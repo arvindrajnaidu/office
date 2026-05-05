@@ -48,6 +48,7 @@ export function registerMessages(program) {
         }
 
         await sock.end();
+        process.exit(0);
       } catch (err) {
         console.error(error("Failed to fetch messages: " + err.message));
         process.exit(1);

@@ -23,6 +23,7 @@ export function registerSend(program) {
         console.log(success(`Message sent to ${jid}`));
 
         await sock.end();
+        process.exit(0);
       } catch (err) {
         console.error(error("Failed to send: " + err.message));
         process.exit(1);

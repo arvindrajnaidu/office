@@ -21,6 +21,7 @@ export function registerStatus(program) {
         const me = sock.user;
         console.log(success(`Connected as ${me?.name || "Unknown"} (${jidToPhone(me?.id)})`));
         await sock.end();
+        process.exit(0);
       } catch (err) {
         console.error(error("Connection failed: " + err.message));
         process.exit(1);

@@ -50,6 +50,7 @@ export function registerSendPoll(program) {
         console.log(success(`Poll sent to ${jid}`));
 
         await sock.end();
+        process.exit(0);
       } catch (err) {
         console.error(error("Failed to send poll: " + err.message));
         process.exit(1);

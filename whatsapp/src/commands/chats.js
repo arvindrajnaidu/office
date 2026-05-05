@@ -54,6 +54,7 @@ export function registerChats(program) {
         }
 
         await sock.end();
+        process.exit(0);
       } catch (err) {
         console.error(error("Failed to fetch chats: " + err.message));
         process.exit(1);
