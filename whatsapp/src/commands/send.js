@@ -6,7 +6,7 @@ export function registerSend(program) {
   program
     .command("send <phone-or-jid> <message>")
     .description("Send a text message")
-    .action(async (phoneOrJid, message, cmd) => {
+    .action(async (phoneOrJid, message, _opts, cmd) => {
       const globals = cmd.optsWithGlobals();
       const authDir = getAuthDir(globals.authDir);
 
