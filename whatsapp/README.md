@@ -9,36 +9,18 @@ Send messages, read chats, and run an AI-powered bot that responds to your self-
 - **CLI commands** — send messages, list chats, read message history, send images and polls
 - **Agentic bot** — message yourself on WhatsApp and an LLM-powered assistant responds, with tools to search groups, summarize conversations, extract links, and create video digests
 - **MCP server** — expose WhatsApp as tools over stdio for AI integrations (Claude Desktop, etc.)
+- **Local message store** — incoming messages cached in a local SQLite DB (`better-sqlite3`)
 - **Dual LLM support** — works with Anthropic Claude or OpenAI GPT
-- **Docker-ready** — pre-built multi-arch images on GHCR, or build locally
 
 ## Quick start
 
 ### With npm
 
 ```bash
-npx @buzzie-ai/whatsapp            # Run directly
+npx @buzzie-ai/whatsapp-channel            # Run directly
 # or
-npm install -g @buzzie-ai/whatsapp  # Install globally
-whatsapp                            # First run walks you through setup
-```
-
-### With Docker (recommended for servers)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/arvindrajnaidu/whatsapp-cli/main/docker-setup.sh | bash
-```
-
-Or step by step:
-
-```bash
-# Pull and start
-docker compose up -d
-
-# Link your WhatsApp account (use pairing code for headless servers)
-docker compose exec whatsapp-bot node bin/whatsapp.mjs login --pairing-code 60123456789
-
-# Enter the 8-digit code on your phone — done
+npm install -g @buzzie-ai/whatsapp-channel  # Install globally
+whatsapp                                    # First run walks you through setup
 ```
 
 ### From source
@@ -168,109 +150,6 @@ When the sync is running, you'll see progress logs:
 History sync: 347 messages cached (40% done)
 History sync: 512 messages cached (80% done)
 History sync: 89 messages cached (100% done)
-```
-
-## Docker
-
-### Pre-built image
-
-Multi-arch images (amd64 + arm64) are published to GHCR on every push to `main`:
-
-```bash
-docker pull ghcr.io/arvindrajnaidu/whatsapp-cli:latest
-```
-
-### docker-compose.yml
-
-```bash
-# Use the pre-built image
-docker compose up -d
-
-# Or build locally
-WHATSAPP_IMAGE=whatsapp-cli:local docker compose up --build
-```
-
-Create a `.env` file:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-```
-
-Auth credentials are persisted in the `whatsapp_data` Docker volume.
-
-### Common Docker commands
-
-```bash
-# Link WhatsApp via QR code (interactive — needs a terminal)
-docker compose run --rm whatsapp-bot node bin/whatsapp.mjs login
-
-# Link via pairing code (headless servers)
-docker compose run --rm whatsapp-bot node bin/whatsapp.mjs login --pairing-code 60123456789
-
-# Unlink WhatsApp
-docker compose run --rm whatsapp-bot node bin/whatsapp.mjs logout
-
-# View live logs
-docker compose logs -f
-
-# Restart the bot (e.g. after pulling a new image)
-docker compose pull && docker compose up -d
-
-# Stop the bot
-docker compose down
-
-# Open a shell inside the container
-docker compose exec whatsapp-bot sh
-```
-
-### Deploy to a GCP Compute Engine instance
-
-```bash
-# SSH into the instance
-gcloud compute ssh <instance-name> --zone <zone> --project <project-id>
-
-# Install Docker
-sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable" | sudo tee /etc/apt/sources.list.d/docker.list
-sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Create project directory
-mkdir -p ~/whatsapp-bot && cd ~/whatsapp-bot
-
-# Create docker-compose.yml and .env (add your API key)
-cat > docker-compose.yml <<'EOF'
-services:
-  whatsapp-bot:
-    image: ghcr.io/arvindrajnaidu/whatsapp-cli:latest
-    environment:
-      WHATSAPP_CLI_HOME: /data
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-    volumes:
-      - whatsapp_data:/data
-    init: true
-    restart: unless-stopped
-
-volumes:
-  whatsapp_data:
-EOF
-
-echo "OPENAI_API_KEY=sk-..." > .env
-
-# Authenticate with GHCR (if the image is private)
-echo "<github-token>" | sudo docker login ghcr.io -u <github-username> --password-stdin
-
-# Pull and start
-sudo docker compose pull && sudo docker compose up -d
-
-# Link WhatsApp (scan the QR code)
-sudo docker compose run --rm whatsapp-bot node bin/whatsapp.mjs login
-
-# Verify it's running
-sudo docker compose logs -f
 ```
 
 ## Integrating a Custom Backend
