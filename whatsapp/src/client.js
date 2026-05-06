@@ -309,6 +309,69 @@ class Client extends EventEmitter {
   }
 
   /**
+   * Reply to an InboundEvent. Sugar for `send(evt.chatId, content)` — uses
+   * the canonical chatId so self-chat replies always land on the visible
+   * (PN-form) side regardless of which delivery path the original message
+   * arrived through.
+   *
+   * @param {InboundEvent} evt
+   * @param {object} content
+   * @param {object} [options]
+   * @returns {Promise<object>}
+   */
+  reply(evt, content, options) {
+    if (!evt?.chatId) {
+      return Promise.reject(
+        new Error("reply() requires an InboundEvent with chatId"),
+      );
+    }
+    return this.send(evt.chatId, content, options);
+  }
+
+  /**
+   * React to an InboundEvent with an emoji. Constructs the Baileys reaction
+   * key from `evt.raw.key` — including `participant` for groups, which most
+   * consumers forget on first try. Pass `""` (empty string) as `emoji` to
+   * remove an existing reaction.
+   *
+   * @param {InboundEvent} evt
+   * @param {string} emoji
+   * @returns {Promise<object>}
+   */
+  react(evt, emoji) {
+    const k = evt?.raw?.key;
+    if (!k?.remoteJid || !k.id) {
+      return Promise.reject(
+        new Error("react() requires an InboundEvent with raw.key"),
+      );
+    }
+    // Reactions are sent to the same chat the original message lives in
+    // (Baileys/WhatsApp protocol — `jid` must equal `key.remoteJid`).
+    // We pass evt.raw.key as-is so all four fields (remoteJid, id, fromMe,
+    // participant) survive — `participant` is required for group reactions.
+    return this.send(k.remoteJid, { react: { text: emoji, key: k } });
+  }
+
+  /**
+   * Update presence — typing indicator, online/offline, recording, etc.
+   * Wraps Baileys `sock.sendPresenceUpdate`. Presence is ephemeral state,
+   * so this fails fast when disconnected instead of queueing.
+   *
+   * @param {'available'|'unavailable'|'composing'|'paused'|'recording'} state
+   * @param {string} [jid]   Optional chat to scope the presence to (for
+   *                         per-chat composing indicators)
+   * @returns {Promise<void>}
+   */
+  presence(state, jid) {
+    if (!this._sock || this._status !== "connected") {
+      return Promise.reject(
+        new Error(`Client not connected (status=${this._status})`),
+      );
+    }
+    return this._sock.sendPresenceUpdate(state, jid);
+  }
+
+  /**
    * Escape hatch — return the underlying Baileys socket, or null when
    * disconnected. Use sparingly; the client reserves the right to swap
    * the socket out from under you on reconnect.

@@ -124,11 +124,23 @@ const me = client.whoami();
 // chatId is canonical (LID twin collapsed), text is unwrapped from
 // envelopes, sender has the :device suffix stripped, and your own
 // echoes from client.send() are filtered out automatically.
-client.on("inbound", (evt) => {
+client.on("inbound", async (evt) => {
   // evt = { chatId, kind: 'self'|'dm'|'group', sender, senderName,
   //         text, msgId, fromMe, raw }
   if (evt.fromMe) return;
-  console.log(`[${evt.kind}] ${evt.senderName}: ${evt.text}`);
+
+  // Reply sugar — uses the canonical chatId so self-chat replies always
+  // land on the visible side regardless of LID/PN delivery path.
+  if (evt.text === "ping") await client.reply(evt, { text: "pong" });
+
+  // React — handles the Baileys reaction-key construction (incl.
+  // `participant` for groups).
+  if (evt.text === "👀") await client.react(evt, "👍");
+
+  // Typing indicator while you compute the reply
+  await client.presence("composing", evt.chatId);
+  // ... do work ...
+  await client.presence("paused", evt.chatId);
 });
 
 // History sync — type !== 'notify' goes here so 'inbound' stays purely live.
