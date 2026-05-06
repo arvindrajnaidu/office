@@ -1,11 +1,16 @@
 import { EventEmitter } from "events";
-import { DisconnectReason } from "@whiskeysockets/baileys";
+import {
+  DisconnectReason,
+  normalizeMessageContent,
+  extractMessageContent,
+} from "@whiskeysockets/baileys";
 import { createSocket, waitForConnection } from "./session.js";
 import { toJid } from "./utils/jid.js";
 
 const DEFAULT_BASE_BACKOFF_MS = 1000;
 const DEFAULT_MAX_BACKOFF_MS = 60_000;
 const DEFAULT_MAX_QUEUE = 100;
+const DEFAULT_SENT_IDS_MAX = 500;
 
 /**
  * Strip Baileys' `:device` suffix from a JID. Multi-device sessions deliver
@@ -44,6 +49,93 @@ function computeWhoami(user) {
 }
 
 /**
+ * Extract the *text* body from a Baileys message, unwrapping the layered
+ * envelopes WhatsApp 7.x uses (ephemeralMessage, viewOnceMessageV2,
+ * documentWithCaptionMessage, etc.). Returns `""` for pure-media messages
+ * with no caption — application logic should branch on `text === ""`, not
+ * try to parse `[image]`-style placeholders.
+ */
+function extractText(rawMessage) {
+  if (!rawMessage) return "";
+  const normalized = normalizeMessageContent(rawMessage);
+  const m = extractMessageContent(normalized) || normalized;
+  if (!m) return "";
+  return (
+    m.conversation ||
+    m.extendedTextMessage?.text ||
+    m.imageMessage?.caption ||
+    m.videoMessage?.caption ||
+    m.documentMessage?.caption ||
+    ""
+  );
+}
+
+/**
+ * @typedef {object} InboundEvent
+ * @property {string} chatId      Canonical chat JID — for self-chat the LID twin
+ *                                is collapsed to the PN form (`whoami().selfChatJid`)
+ *                                so a single chatId works for both inbound matching
+ *                                and outbound replies.
+ * @property {'self'|'dm'|'group'} kind
+ * @property {string} sender      Sender JID with `:device` suffix stripped. For
+ *                                groups this is `key.participant`; for DMs/self
+ *                                it falls back to `key.remoteJid`.
+ * @property {string} senderName  pushName, falling back to bare phone digits.
+ * @property {string} text        Body text, envelopes unwrapped; `""` for pure media.
+ * @property {string} msgId
+ * @property {boolean} fromMe
+ * @property {object} raw         Full Baileys WAMessage — escape hatch for media,
+ *                                polls, reactions, and anything else not surfaced
+ *                                in the cooked event.
+ */
+
+/**
+ * Translate a Baileys message into a normalized InboundEvent. Skips messages
+ * with no usable content (returns `null` — caller should filter).
+ */
+function toInboundEvent(msg, whoami) {
+  if (!msg?.key?.remoteJid || !msg.message) return null;
+
+  const remoteJid = msg.key.remoteJid;
+  const isGroup = remoteJid.endsWith("@g.us");
+
+  let kind;
+  let chatId;
+  if (isGroup) {
+    kind = "group";
+    chatId = stripDevice(remoteJid);
+  } else {
+    const remoteStripped = stripDevice(remoteJid);
+    const isSelfRemote =
+      remoteStripped === whoami.id || remoteStripped === whoami.lid;
+    if (isSelfRemote) {
+      kind = "self";
+      // Always canonicalize self-chat to the PN form — the LID twin is for
+      // matching only; outbound to LID doesn't show in the visible self-chat.
+      chatId = whoami.selfChatJid;
+    } else {
+      kind = "dm";
+      chatId = remoteStripped;
+    }
+  }
+
+  const senderRaw = msg.key.participant ?? remoteJid;
+  const sender = stripDevice(senderRaw);
+  const senderName = msg.pushName || (sender?.split("@")[0] ?? "");
+
+  return {
+    chatId,
+    kind,
+    sender,
+    senderName,
+    text: extractText(msg.message),
+    msgId: msg.key.id,
+    fromMe: !!msg.key.fromMe,
+    raw: msg,
+  };
+}
+
+/**
  * Create a managed WhatsApp client. Owns the Baileys socket lifecycle,
  * auto-reconnects on transient drops, and exposes a stable send/receive
  * interface so callers don't have to track WS state.
@@ -73,7 +165,13 @@ export async function createClient(opts = {}) {
  * Client wraps a Baileys socket with reconnect semantics.
  *
  * Events:
- *   'message'  (msg, type)   — forwarded from Baileys `messages.upsert`
+ *   'inbound'  (evt)         — cooked InboundEvent for live (notify) messages,
+ *                              post echo-dedup and self-chat canonicalization.
+ *                              Recommended for most consumers.
+ *   'history'  (msg)         — raw Baileys message during history sync
+ *                              (`messages.upsert` with type !== 'notify').
+ *   'message'  (msg, type)   — raw Baileys passthrough; emits for ALL messages
+ *                              including history and own echoes. Escape hatch.
  *   'status'   (status)      — 'connected' | 'reconnecting' | 'logged_out' | 'closed'
  *   'qr'       (qr)          — QR string (rare for an authed client)
  *   'error'    (err)         — reconnect failure or logged-out
@@ -89,6 +187,7 @@ class Client extends EventEmitter {
     this._maxBackoffMs = opts.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
     this._queueWhileDisconnected = opts.queueWhileDisconnected ?? true;
     this._maxQueueSize = opts.maxQueueSize ?? DEFAULT_MAX_QUEUE;
+    this._filterOwnEchoes = opts.filterOwnEchoes ?? true;
 
     this._sock = null;
     this._status = "connecting";
@@ -97,6 +196,21 @@ class Client extends EventEmitter {
     this._reconnectAttempt = 0;
     this._reconnectTimer = null;
     this._whoami = null;
+    this._sentIds = new Set();   // bounded; LRU-ish via insertion-order trim
+  }
+
+  /* -------------------------------------------------------------------------
+   * Internal — echo dedup
+   * -----------------------------------------------------------------------*/
+
+  _recordSentId(id) {
+    if (!id) return;
+    this._sentIds.add(id);
+    while (this._sentIds.size > DEFAULT_SENT_IDS_MAX) {
+      // Set iteration is insertion-order — first value is the oldest.
+      const oldest = this._sentIds.values().next().value;
+      this._sentIds.delete(oldest);
+    }
   }
 
   /* -------------------------------------------------------------------------
@@ -143,16 +257,23 @@ class Client extends EventEmitter {
     }
 
     if (this._sock && this._status === "connected") {
-      return this._sock.sendMessage(jid, content, options).catch((err) => {
-        // Sock died mid-send. Queue (or fail) so the caller doesn't have to retry.
-        if (
-          this._queueWhileDisconnected &&
-          err?.message?.includes("Connection Closed")
-        ) {
-          return this._enqueue(jid, content, options);
-        }
-        throw err;
-      });
+      return this._sock.sendMessage(jid, content, options).then(
+        (result) => {
+          // Record the message ID so the inbound listener can drop our own echo.
+          this._recordSentId(result?.key?.id);
+          return result;
+        },
+        (err) => {
+          // Sock died mid-send. Queue (or fail) so the caller doesn't have to retry.
+          if (
+            this._queueWhileDisconnected &&
+            err?.message?.includes("Connection Closed")
+          ) {
+            return this._enqueue(jid, content, options);
+          }
+          throw err;
+        },
+      );
     }
 
     return this._enqueue(jid, content, options);
@@ -251,7 +372,33 @@ class Client extends EventEmitter {
     });
 
     sock.ev.on("messages.upsert", (m) => {
-      for (const msg of m.messages) this.emit("message", msg, m.type);
+      for (const msg of m.messages) {
+        // Raw passthrough — preserved unfiltered for advanced consumers.
+        this.emit("message", msg, m.type);
+
+        // History sync — type !== 'notify' is the WhatsApp backfill stream.
+        // Route those to a separate event so 'inbound' is purely live messages.
+        if (m.type !== "notify") {
+          this.emit("history", msg);
+          continue;
+        }
+
+        // Echo dedup — drop messages whose IDs we sent ourselves via this
+        // client. Tracked from sock.sendMessage results in send/_flushQueue.
+        if (
+          this._filterOwnEchoes &&
+          msg.key?.id &&
+          this._sentIds.has(msg.key.id)
+        ) {
+          continue;
+        }
+
+        // Should always exist post-connect, but guard anyway.
+        if (!this._whoami) continue;
+
+        const evt = toInboundEvent(msg, this._whoami);
+        if (evt) this.emit("inbound", evt);
+      }
     });
 
     await waitForConnection(sock);
@@ -342,6 +489,7 @@ class Client extends EventEmitter {
           item.content,
           item.options,
         );
+        this._recordSentId(result?.key?.id);
         item.resolve(result);
       } catch (err) {
         item.reject(err);

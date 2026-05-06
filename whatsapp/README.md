@@ -120,12 +120,25 @@ const me = client.whoami();
 //     selfChatJid: "16693070940@s.whatsapp.net",
 //     selfChatLid: "12345...@lid" }
 
-// Inbound
-client.on("message", (msg, type) => {
-  if (type !== "notify") return;       // skip history-sync messages
-  if (msg.key.fromMe) return;
-  console.log(msg.key.remoteJid, "→", msg.message?.conversation);
+// Inbound (cooked) — normalized event, recommended for most consumers.
+// chatId is canonical (LID twin collapsed), text is unwrapped from
+// envelopes, sender has the :device suffix stripped, and your own
+// echoes from client.send() are filtered out automatically.
+client.on("inbound", (evt) => {
+  // evt = { chatId, kind: 'self'|'dm'|'group', sender, senderName,
+  //         text, msgId, fromMe, raw }
+  if (evt.fromMe) return;
+  console.log(`[${evt.kind}] ${evt.senderName}: ${evt.text}`);
 });
+
+// History sync — type !== 'notify' goes here so 'inbound' stays purely live.
+client.on("history", (msg) => {
+  // raw Baileys message; useful for backfilling local stores
+});
+
+// Raw passthrough — emits for ALL messages (history + own echoes included).
+// Escape hatch only — most consumers want 'inbound' instead.
+client.on("message", (msg, type) => { /* ... */ });
 
 // Lifecycle observation
 client.on("status", (s) => console.log("client status:", s));
@@ -136,6 +149,19 @@ client.on("error", (err) => console.error("client error:", err));
 // Clean shutdown (e.g. on SIGTERM)
 process.on("SIGTERM", () => client.close());
 ```
+
+### `InboundEvent` shape
+
+| Field | Type | Notes |
+|---|---|---|
+| `chatId` | `string` | Canonical chat JID. For self-chat, the LID twin is collapsed to `whoami().selfChatJid` so a single chatId works for both inbound matching and outbound replies. |
+| `kind` | `'self' \| 'dm' \| 'group'` | |
+| `sender` | `string` | Sender JID with `:device` suffix stripped. For groups uses `key.participant`; for DMs/self falls back to `key.remoteJid`. |
+| `senderName` | `string` | `pushName`, falling back to bare phone digits. |
+| `text` | `string` | Body text, envelopes unwrapped (`ephemeralMessage`, `viewOnceMessageV2`, `documentWithCaptionMessage`, etc.). `""` for pure media — branch on `text === ""`, don't parse `[image]`-style markers. |
+| `msgId` | `string` | |
+| `fromMe` | `boolean` | True for messages typed in WhatsApp directly by the linked account (other devices' sends, self-chat messages typed in the UI). Own echoes from `client.send()` are filtered upstream. |
+| `raw` | `object` | Full Baileys `WAMessage` — escape hatch for media, polls, reactions, and anything else not surfaced in the cooked event. |
 
 ### Reconnect behavior
 
@@ -158,6 +184,8 @@ createClient({
 
   queueWhileDisconnected: true, // queue sends during reconnect (default on)
   maxQueueSize: 100,            // over this, send() rejects with "queue full"
+
+  filterOwnEchoes: true,        // drop 'inbound' events whose IDs we sent
 });
 ```
 
