@@ -91,50 +91,52 @@ node bin/whatsapp.mjs mcp
 
 **MCP tools:** `send_message`, `list_chats`, `get_messages`, `search_chats`, `get_group_info`
 
-## Embedded use — `createChannel`
+## Embedded use — `createClient`
 
-When you want to embed WhatsApp into your own Node service (a Claude Code plugin, an MCP server, an alerting daemon), don't use the raw Baileys socket — Baileys' WebSocket dies on keepalive misses and server-side rotations, and silently throws `Connection Closed` forever afterward. Use `createChannel` instead. It owns the socket lifecycle, auto-reconnects with exponential backoff, and gives you a stable `send` / `'message'` surface.
+When you want to embed WhatsApp into your own Node service (a Claude Code plugin, an MCP server, an alerting daemon), don't use the raw Baileys socket — Baileys' WebSocket dies on keepalive misses and server-side rotations, and silently throws `Connection Closed` forever afterward. Use `createClient` instead. It owns the socket lifecycle, auto-reconnects with exponential backoff, and gives you a stable `send` / `'message'` surface.
+
+> "Client" here means the WhatsApp client object your code talks to. The package is named `whatsapp-channel` because in the wider architecture each delivery surface (WhatsApp, Voice, Email, …) is a "channel" — the package is *one* channel; `createClient()` is the runtime entrypoint into it. This naming sidesteps WhatsApp's own product feature also called "Channels."
 
 ```js
-import { createChannel } from "@buzzie-ai/whatsapp-channel";
+import { createClient } from "@buzzie-ai/whatsapp-channel";
 
-const channel = await createChannel({
+const client = await createClient({
   // authDir defaults to ~/.whatsapp-cli/auth — same as the CLI uses
 });
 
 // Outbound — works whether or not the underlying socket is currently up.
 // During reconnect, the send is queued and flushed on success.
-await channel.send("16693070940@s.whatsapp.net", { text: "Hello" });
+await client.send("16693070940@s.whatsapp.net", { text: "Hello" });
 
 // Inbound
-channel.on("message", (msg, type) => {
+client.on("message", (msg, type) => {
   if (type !== "notify") return;       // skip history-sync messages
   if (msg.key.fromMe) return;
   console.log(msg.key.remoteJid, "→", msg.message?.conversation);
 });
 
 // Lifecycle observation
-channel.on("status", (s) => console.log("channel status:", s));
+client.on("status", (s) => console.log("client status:", s));
 //   'connected' | 'reconnecting' | 'logged_out' | 'closed'
 
-channel.on("error", (err) => console.error("channel error:", err));
+client.on("error", (err) => console.error("client error:", err));
 
 // Clean shutdown (e.g. on SIGTERM)
-process.on("SIGTERM", () => channel.close());
+process.on("SIGTERM", () => client.close());
 ```
 
 ### Reconnect behavior
 
-| Disconnect cause | Channel behavior |
+| Disconnect cause | Client behavior |
 |---|---|
 | Transient WS drop (keepalive miss, network blip, server rotation) | Reconnects with exponential backoff (1s → 60s, jittered). Pending `send()` calls queue and resolve once reconnected. |
 | `DisconnectReason.loggedOut` | Stops. Emits `'status' === 'logged_out'`. Rejects all queued sends. Re-pair via `whatsapp login` to recover. |
-| `channel.close()` called | Stops. Emits `'status' === 'closed'`. Rejects all queued sends. |
+| `client.close()` called | Stops. Emits `'status' === 'closed'`. Rejects all queued sends. |
 
 ### Options
 
 ```js
-createChannel({
+createClient({
   authDir,                      // override auth directory
   verbose: false,               // verbose Baileys logs
   syncFullHistory: true,        // sync history on first link
@@ -151,13 +153,13 @@ Set `queueWhileDisconnected: false` to fail-fast instead of queueing — useful 
 
 ### Escape hatch
 
-If you need a Baileys feature the channel doesn't expose (e.g. presence, profile pictures, group admin operations), grab the raw socket:
+If you need a Baileys feature the client doesn't expose (e.g. presence, profile pictures, group admin operations), grab the raw socket:
 
 ```js
-const sock = channel.getSocket();   // Baileys WASocket, or null if reconnecting
+const sock = client.getSocket();   // Baileys WASocket, or null if reconnecting
 ```
 
-The channel reserves the right to swap the socket out on reconnect, so don't hold the reference across async boundaries — call `getSocket()` again each time you need it.
+The client reserves the right to swap the socket out on reconnect, so don't hold the reference across async boundaries — call `getSocket()` again each time you need it.
 
 Claude Desktop config (`claude_desktop_config.json`):
 

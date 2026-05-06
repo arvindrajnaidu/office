@@ -7,11 +7,11 @@ const DEFAULT_MAX_BACKOFF_MS = 60_000;
 const DEFAULT_MAX_QUEUE = 100;
 
 /**
- * Create a managed WhatsApp channel. Owns the Baileys socket lifecycle,
+ * Create a managed WhatsApp client. Owns the Baileys socket lifecycle,
  * auto-reconnects on transient drops, and exposes a stable send/receive
  * interface so callers don't have to track WS state.
  *
- * Resolves once the first connection is open. After that, the channel stays
+ * Resolves once the first connection is open. After that, the client stays
  * up across transient WebSocket failures by reconnecting with exponential
  * backoff. It only gives up if Baileys reports `DisconnectReason.loggedOut`,
  * which means the auth state is gone and re-pairing is required.
@@ -24,24 +24,24 @@ const DEFAULT_MAX_QUEUE = 100;
  * @param {number}  [opts.maxBackoffMs=60000]      Cap on reconnect delay
  * @param {boolean} [opts.queueWhileDisconnected=true]  Queue sends during reconnect
  * @param {number}  [opts.maxQueueSize=100]        Max pending sends; over this, send() rejects
- * @returns {Promise<Channel>}
+ * @returns {Promise<Client>}
  */
-export async function createChannel(opts = {}) {
-  const channel = new Channel(opts);
-  await channel._initialConnect();
-  return channel;
+export async function createClient(opts = {}) {
+  const client = new Client(opts);
+  await client._initialConnect();
+  return client;
 }
 
 /**
- * Channel wraps a Baileys socket with reconnect semantics.
+ * Client wraps a Baileys socket with reconnect semantics.
  *
  * Events:
  *   'message'  (msg, type)   — forwarded from Baileys `messages.upsert`
  *   'status'   (status)      — 'connected' | 'reconnecting' | 'logged_out' | 'closed'
- *   'qr'       (qr)          — QR string (rare for an authed channel)
+ *   'qr'       (qr)          — QR string (rare for an authed client)
  *   'error'    (err)         — reconnect failure or logged-out
  */
-class Channel extends EventEmitter {
+class Client extends EventEmitter {
   constructor(opts) {
     super();
     this._opts = opts;
@@ -87,11 +87,11 @@ class Channel extends EventEmitter {
    */
   send(jid, content, options) {
     if (this._status === "closed") {
-      return Promise.reject(new Error("Channel is closed"));
+      return Promise.reject(new Error("Client is closed"));
     }
     if (this._status === "logged_out") {
       return Promise.reject(
-        new Error("Channel logged out — re-pair with `whatsapp login`"),
+        new Error("Client logged out — re-pair with `whatsapp login`"),
       );
     }
 
@@ -113,7 +113,7 @@ class Channel extends EventEmitter {
 
   /**
    * Escape hatch — return the underlying Baileys socket, or null when
-   * disconnected. Use sparingly; the channel reserves the right to swap
+   * disconnected. Use sparingly; the client reserves the right to swap
    * the socket out from under you on reconnect.
    */
   getSocket() {
@@ -121,7 +121,7 @@ class Channel extends EventEmitter {
   }
 
   /**
-   * Tear the channel down cleanly. Stops the reconnect loop, rejects all
+   * Tear the client down cleanly. Stops the reconnect loop, rejects all
    * queued sends, and ends the underlying socket. Idempotent.
    */
   async close() {
@@ -133,7 +133,7 @@ class Channel extends EventEmitter {
       this._reconnectTimer = null;
     }
 
-    this._rejectQueue(new Error("Channel closed"));
+    this._rejectQueue(new Error("Client closed"));
 
     if (this._sock) {
       try {
@@ -197,7 +197,7 @@ class Channel extends EventEmitter {
     this._sock = null;
 
     if (code === DisconnectReason.loggedOut) {
-      const err = new Error("Channel logged out — re-pair required");
+      const err = new Error("Client logged out — re-pair required");
       this._setStatus("logged_out");
       this._rejectQueue(err);
       this.emit("error", err);
@@ -237,12 +237,12 @@ class Channel extends EventEmitter {
   _enqueue(jid, content, options) {
     if (!this._queueWhileDisconnected) {
       return Promise.reject(
-        new Error(`Channel not connected (status=${this._status})`),
+        new Error(`Client not connected (status=${this._status})`),
       );
     }
     if (this._queue.length >= this._maxQueueSize) {
       return Promise.reject(
-        new Error(`Channel send queue full (max=${this._maxQueueSize})`),
+        new Error(`Client send queue full (max=${this._maxQueueSize})`),
       );
     }
     return new Promise((resolve, reject) => {

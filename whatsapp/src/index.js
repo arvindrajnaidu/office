@@ -1,6 +1,6 @@
 // High-level API (recommended for embedded use — auto-reconnects, stable
 // send/receive surface).
-export { createChannel } from "./channel.js";
+export { createClient } from "./client.js";
 
 // Lower-level building blocks (raw Baileys socket — caller must manage WS
 // lifecycle themselves; prefer createChannel unless you have a reason).
