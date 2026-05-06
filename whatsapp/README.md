@@ -91,6 +91,74 @@ node bin/whatsapp.mjs mcp
 
 **MCP tools:** `send_message`, `list_chats`, `get_messages`, `search_chats`, `get_group_info`
 
+## Embedded use — `createChannel`
+
+When you want to embed WhatsApp into your own Node service (a Claude Code plugin, an MCP server, an alerting daemon), don't use the raw Baileys socket — Baileys' WebSocket dies on keepalive misses and server-side rotations, and silently throws `Connection Closed` forever afterward. Use `createChannel` instead. It owns the socket lifecycle, auto-reconnects with exponential backoff, and gives you a stable `send` / `'message'` surface.
+
+```js
+import { createChannel } from "@buzzie-ai/whatsapp-channel";
+
+const channel = await createChannel({
+  // authDir defaults to ~/.whatsapp-cli/auth — same as the CLI uses
+});
+
+// Outbound — works whether or not the underlying socket is currently up.
+// During reconnect, the send is queued and flushed on success.
+await channel.send("16693070940@s.whatsapp.net", { text: "Hello" });
+
+// Inbound
+channel.on("message", (msg, type) => {
+  if (type !== "notify") return;       // skip history-sync messages
+  if (msg.key.fromMe) return;
+  console.log(msg.key.remoteJid, "→", msg.message?.conversation);
+});
+
+// Lifecycle observation
+channel.on("status", (s) => console.log("channel status:", s));
+//   'connected' | 'reconnecting' | 'logged_out' | 'closed'
+
+channel.on("error", (err) => console.error("channel error:", err));
+
+// Clean shutdown (e.g. on SIGTERM)
+process.on("SIGTERM", () => channel.close());
+```
+
+### Reconnect behavior
+
+| Disconnect cause | Channel behavior |
+|---|---|
+| Transient WS drop (keepalive miss, network blip, server rotation) | Reconnects with exponential backoff (1s → 60s, jittered). Pending `send()` calls queue and resolve once reconnected. |
+| `DisconnectReason.loggedOut` | Stops. Emits `'status' === 'logged_out'`. Rejects all queued sends. Re-pair via `whatsapp login` to recover. |
+| `channel.close()` called | Stops. Emits `'status' === 'closed'`. Rejects all queued sends. |
+
+### Options
+
+```js
+createChannel({
+  authDir,                      // override auth directory
+  verbose: false,               // verbose Baileys logs
+  syncFullHistory: true,        // sync history on first link
+
+  baseBackoffMs: 1000,          // first reconnect delay
+  maxBackoffMs: 60_000,         // cap on reconnect delay
+
+  queueWhileDisconnected: true, // queue sends during reconnect (default on)
+  maxQueueSize: 100,            // over this, send() rejects with "queue full"
+});
+```
+
+Set `queueWhileDisconnected: false` to fail-fast instead of queueing — useful for time-sensitive sends where late delivery is worse than no delivery (the caller can implement its own retry/buffering policy).
+
+### Escape hatch
+
+If you need a Baileys feature the channel doesn't expose (e.g. presence, profile pictures, group admin operations), grab the raw socket:
+
+```js
+const sock = channel.getSocket();   // Baileys WASocket, or null if reconnecting
+```
+
+The channel reserves the right to swap the socket out on reconnect, so don't hold the reference across async boundaries — call `getSocket()` again each time you need it.
+
 Claude Desktop config (`claude_desktop_config.json`):
 
 ```json
