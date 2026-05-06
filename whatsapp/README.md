@@ -106,7 +106,19 @@ const client = await createClient({
 
 // Outbound — works whether or not the underlying socket is currently up.
 // During reconnect, the send is queued and flushed on success.
-await client.send("16693070940@s.whatsapp.net", { text: "Hello" });
+// `to` accepts either a full JID or bare phone digits.
+await client.send("16693070940", { text: "Hello" });
+
+// Sugar for sending to your own self-chat (cron alerts, "done" pings, etc.)
+await client.selfSend({ text: "Build finished ✓" });
+
+// Identity bag — captured at connect, stable across reconnects
+const me = client.whoami();
+//   { id: "16693070940@s.whatsapp.net",
+//     lid: "12345...@lid",
+//     phone: "16693070940",
+//     selfChatJid: "16693070940@s.whatsapp.net",
+//     selfChatLid: "12345...@lid" }
 
 // Inbound
 client.on("message", (msg, type) => {

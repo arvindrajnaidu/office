@@ -1,10 +1,47 @@
 import { EventEmitter } from "events";
 import { DisconnectReason } from "@whiskeysockets/baileys";
 import { createSocket, waitForConnection } from "./session.js";
+import { toJid } from "./utils/jid.js";
 
 const DEFAULT_BASE_BACKOFF_MS = 1000;
 const DEFAULT_MAX_BACKOFF_MS = 60_000;
 const DEFAULT_MAX_QUEUE = 100;
+
+/**
+ * Strip Baileys' `:device` suffix from a JID. Multi-device sessions deliver
+ * messages with the linked-device id appended (e.g. `<phone>:5@s.whatsapp.net`),
+ * but JID equality, storage keys, and outbound targets all want the bare form.
+ */
+function stripDevice(jid) {
+  if (!jid || typeof jid !== "string") return jid;
+  const at = jid.indexOf("@");
+  if (at === -1) return jid;
+  const main = jid.slice(0, at);
+  const colon = main.indexOf(":");
+  if (colon === -1) return jid;
+  return main.slice(0, colon) + jid.slice(at);
+}
+
+/**
+ * Build the cached identity bag from `sock.user`. WhatsApp multi-device gives
+ * us two coordinates for "me" — the phone-number JID (`@s.whatsapp.net`, used
+ * for outbound and visible in the user's self-chat) and the LID twin (`@lid`,
+ * used by some linked-device delivery paths). Inbound matchers need both;
+ * outbound canonicalizes to the PN form.
+ */
+function computeWhoami(user) {
+  if (!user || !user.id) return null;
+  const id = stripDevice(user.id);
+  const lid = user.lid ? stripDevice(user.lid) : null;
+  const phone = id.split("@")[0];
+  return {
+    id,
+    lid,
+    phone,
+    selfChatJid: id,
+    selfChatLid: lid,
+  };
+}
 
 /**
  * Create a managed WhatsApp client. Owns the Baileys socket lifecycle,
@@ -59,6 +96,7 @@ class Client extends EventEmitter {
     this._closing = false;
     this._reconnectAttempt = 0;
     this._reconnectTimer = null;
+    this._whoami = null;
   }
 
   /* -------------------------------------------------------------------------
@@ -80,12 +118,14 @@ class Client extends EventEmitter {
    * If disconnected and queueWhileDisconnected is true, the send is queued
    * and the returned promise resolves after a successful reconnect-and-flush.
    *
-   * @param {string} jid          Recipient JID (`...@s.whatsapp.net` or `...@g.us`)
+   * @param {string} to           Recipient — full JID (`...@s.whatsapp.net`, `...@g.us`) or
+   *                              bare phone digits (e.g. `"16693070940"`); digits are coerced
+   *                              to `<digits>@s.whatsapp.net` automatically.
    * @param {object} content      Baileys message content (`{ text }`, `{ image }`, etc.)
    * @param {object} [options]    Baileys send options
    * @returns {Promise<object>}   Sent message metadata
    */
-  send(jid, content, options) {
+  send(to, content, options) {
     if (this._status === "closed") {
       return Promise.reject(new Error("Client is closed"));
     }
@@ -93,6 +133,13 @@ class Client extends EventEmitter {
       return Promise.reject(
         new Error("Client logged out — re-pair with `whatsapp login`"),
       );
+    }
+
+    let jid;
+    try {
+      jid = toJid(to);
+    } catch (err) {
+      return Promise.reject(err);
     }
 
     if (this._sock && this._status === "connected") {
@@ -109,6 +156,35 @@ class Client extends EventEmitter {
     }
 
     return this._enqueue(jid, content, options);
+  }
+
+  /**
+   * Send to your own self-chat. Equivalent to `send(whoami().selfChatJid, content)`
+   * but readable at every callsite (cron alerts, "done" pings, error pages).
+   *
+   * @param {object} content      Baileys message content
+   * @param {object} [options]    Baileys send options
+   * @returns {Promise<object>}
+   */
+  selfSend(content, options) {
+    if (!this._whoami) {
+      return Promise.reject(
+        new Error("Client identity not available — wait for first connection"),
+      );
+    }
+    return this.send(this._whoami.selfChatJid, content, options);
+  }
+
+  /**
+   * Identity bag for the linked WhatsApp account. Captured once at first
+   * connect and stable across reconnects (the WS may swap; identity doesn't).
+   * Returns null if called before the initial connection completes — but
+   * since `createClient()` already awaits that, you'll usually never see null.
+   *
+   * @returns {{ id: string, lid: string|null, phone: string, selfChatJid: string, selfChatLid: string|null } | null}
+   */
+  whoami() {
+    return this._whoami;
   }
 
   /**
@@ -182,6 +258,11 @@ class Client extends EventEmitter {
 
     this._sock = sock;
     this._reconnectAttempt = 0;
+    // Identity should match across reconnects — only compute on first connect,
+    // re-derive only if it was somehow missing.
+    if (!this._whoami) {
+      this._whoami = computeWhoami(sock.user);
+    }
     this._setStatus("connected");
     await this._flushQueue();
   }
