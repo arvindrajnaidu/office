@@ -55,7 +55,7 @@ export function createRealtimeSipHandler({ apiKey, backend }) {
 
     socket.once("open", () => {
       console.log("[realtime-sip] tool connection open", callId);
-      respond({ instructions: "Greet the caller briefly as Sal and ask how you can help.", tool_choice: "none" });
+      respond({ instructions: "Say exactly: Hi, this is Sal. How can I help? Then stop and listen.", tool_choice: "none" });
     });
     socket.on("message", async (raw) => {
       let event;
