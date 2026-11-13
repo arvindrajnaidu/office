@@ -2,6 +2,7 @@ import { createDispatcher, createApiServer } from "@buzzie-ai/core";
 import { openDb, closeDb, upsertCall, updateCallStatus, getTranscripts } from "../db.js";
 import { readConfig, resolveTwilioConfig, resolveOpenAIKey, resolveWebhookUrl, resolveTtsVoice, resolveTtsInstructions, resolveBackendConfig } from "../config.js";
 import { createSmsHandler } from "../sms.js";
+import { createRealtimeSipHandler } from "../realtime-sip.js";
 import { createWebhookServer } from "../webhook.js";
 import { createMediaStreamServer } from "../media-stream.js";
 import { createVoiceAdapter } from "../adapter.js";
@@ -59,10 +60,13 @@ export async function startBot(opts = {}) {
     })
     : undefined;
 
+  const onRealtimeSip = createRealtimeSipHandler({ apiKey: openaiKey, backend: backendConfig });
+
   // Webhook + media stream handler
   const webhookServer = createWebhookServer({
     webhookUrl,
     onSms,
+    onRealtimeSip,
     onCallStart: (callSid, from, to) => {
       upsertCall(callSid, from, to, "ringing");
     },
@@ -183,7 +187,7 @@ export async function startBot(opts = {}) {
       const numbers = await client.incomingPhoneNumbers.list({ phoneNumber: twilio.phoneNumber });
       if (numbers.length > 0) {
         await numbers[0].update({
-          voiceUrl: `${webhookUrl}/voice/incoming`,
+          voiceUrl: process.env.TWILIO_VOICE_WEBHOOK_URL || `${webhookUrl}/voice/incoming`,
           voiceMethod: "POST",
           statusCallback: `${webhookUrl}/voice/status`,
           statusCallbackMethod: "POST",
