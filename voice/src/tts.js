@@ -64,7 +64,7 @@ const FILTER_HALF = (ANTI_ALIAS_TAPS.length - 1) >> 1;
  */
 export function pcmToMulaw(pcmBuffer) {
   const RATIO = 3;
-  const numInputSamples = pcmBuffer.length / 2;
+  const numInputSamples = Math.floor(pcmBuffer.length / 2);
   const numOutputSamples = Math.floor(numInputSamples / RATIO);
   const mulaw = Buffer.alloc(numOutputSamples);
 
@@ -86,8 +86,8 @@ export function pcmToMulaw(pcmBuffer) {
 }
 
 function linearToMulaw(sample) {
-  const MULAW_MAX = 0x1FFF;
-  const MULAW_BIAS = 33;
+  const MULAW_MAX = 32635;
+  const MULAW_BIAS = 132;
   const sign = (sample >> 8) & 0x80;
 
   if (sign !== 0) sample = -sample;

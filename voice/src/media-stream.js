@@ -26,11 +26,14 @@ export function createMediaStreamServer(opts) {
     let streamSid = null;
     let fromNumber = null;
     let sttSession = null;
+    let playbackUntil = 0;
 
     console.log("[media] new connection");
 
     function sendFrame(frame) {
       if (ws.readyState !== ws.OPEN || !streamSid) return;
+      // Twilio plays 8 kHz μ-law audio. Leave time for handset echo to decay.
+      playbackUntil = Math.max(playbackUntil, Date.now() + 300);
       ws.send(JSON.stringify({
         event: "media",
         streamSid,
@@ -59,7 +62,7 @@ export function createMediaStreamServer(opts) {
         ttsQueue.clear();
       },
       onTranscript: async (text) => {
-        if (!callSid) return;
+        if (!callSid || Date.now() < playbackUntil) return;
 
         console.log(`[media] caller said: ${text}`);
         addTranscript(callSid, "user", text);
@@ -90,6 +93,7 @@ export function createMediaStreamServer(opts) {
             break;
 
           case "start":
+            if (streamSid) break;
             callSid = msg.start?.callSid;
             streamSid = msg.start?.streamSid;
             fromNumber = msg.start?.customParameters?.from || null;
@@ -123,7 +127,7 @@ export function createMediaStreamServer(opts) {
             break;
 
           case "media":
-            if (msg.media?.payload && sttSession) {
+            if (msg.media?.payload && sttSession && Date.now() >= playbackUntil) {
               sttSession.sendAudio(msg.media.payload);
             }
             break;

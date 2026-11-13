@@ -13,7 +13,7 @@ const { VoiceResponse } = twilio.twiml;
  * @returns {import("http").Server}
  */
 export function createWebhookServer(opts) {
-  const { webhookUrl, onCallStart, onCallEnd } = opts;
+  const { webhookUrl, onCallStart, onCallEnd, onSms } = opts;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -25,10 +25,12 @@ export function createWebhookServer(opts) {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const raw = Buffer.concat(chunks).toString();
-      for (const pair of raw.split("&")) {
-        const [key, value] = pair.split("=").map(decodeURIComponent);
-        body[key] = value;
-      }
+      body = Object.fromEntries(new URLSearchParams(raw));
+    }
+
+    if (path === "/sms/incoming" && req.method === "POST" && onSms) {
+      await onSms(req, res, body);
+      return;
     }
 
     // ── Incoming call webhook ──

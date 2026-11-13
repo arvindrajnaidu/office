@@ -5,19 +5,9 @@ const FRAME_INTERVAL_MS = 20;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Split a brain response into sentence-sized chunks for incremental TTS.
- * Keeps punctuation so the TTS model can prosody accordingly.
- */
-export function splitSentences(text) {
-  if (!text) return [];
-  const parts = text.match(/[^.!?\n]+[.!?\n]*/g) || [];
-  return parts.map((s) => s.trim()).filter(Boolean);
-}
-
-/**
- * Create a streaming TTS queue that synthesizes sentences in parallel and
- * plays them back in order, 20ms mu-law frames at a time, to a sender
- * function. `clear()` aborts in-flight playback for barge-in.
+ * Synthesize each reply as a single utterance so pitch and pacing carry
+ * across sentences. Play replies in order as 20ms μ-law frames.
+ * `clear()` interrupts playback and discards queued replies.
  *
  * @param {object} opts
  * @param {string} opts.apiKey - OpenAI API key
@@ -71,12 +61,8 @@ export function createTtsQueue(opts) {
 
   function enqueue(text) {
     if (!text) return;
-    const sentences = splitSentences(text);
-    for (const sentence of sentences) {
-      const signal = controller.signal;
-      const promise = synthesize(sentence, signal);
-      queue.push({ promise, signal });
-    }
+    const signal = controller.signal;
+    queue.push({ promise: synthesize(text, signal), signal });
     drain();
   }
 

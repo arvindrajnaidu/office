@@ -1,6 +1,7 @@
 import { createDispatcher, createApiServer } from "@buzzie-ai/core";
-import { openDb, closeDb, upsertCall, updateCallStatus, loadConversationHistory } from "../db.js";
+import { openDb, closeDb, upsertCall, updateCallStatus, getTranscripts } from "../db.js";
 import { readConfig, resolveTwilioConfig, resolveOpenAIKey, resolveWebhookUrl, resolveTtsVoice, resolveTtsInstructions, resolveBackendConfig } from "../config.js";
+import { createSmsHandler } from "../sms.js";
 import { createWebhookServer } from "../webhook.js";
 import { createMediaStreamServer } from "../media-stream.js";
 import { createVoiceAdapter } from "../adapter.js";
@@ -49,9 +50,19 @@ export async function startBot(opts = {}) {
   const apiPort = apiConfig.port || process.env.BUZZIE_API_PORT || 3100;
   const apiToken = apiConfig.token || process.env.BUZZIE_API_TOKEN;
 
+  const smsEnabled = process.env.TWILIO_SMS_ENABLED === "1" && backendConfig.type === "http";
+  const onSms = smsEnabled
+    ? createSmsHandler({
+      authToken: twilio.authToken,
+      webhookUrl,
+      dispatcher: createDispatcher({ backend: { ...backendConfig, timeout: 10000 } }),
+    })
+    : undefined;
+
   // Webhook + media stream handler
   const webhookServer = createWebhookServer({
     webhookUrl,
+    onSms,
     onCallStart: (callSid, from, to) => {
       upsertCall(callSid, from, to, "ringing");
     },
@@ -94,7 +105,7 @@ export async function startBot(opts = {}) {
       console.log(`[bot] call connected: ${fromNumber || callSid}`);
 
       try {
-        const history = loadConversationHistory(3600000, 20);
+        const history = getTranscripts(callSid).slice(-20).map(({ role, content }) => ({ role, content }));
         const result = await dispatcher.dispatch({
           type: "dm",
           jid: fromNumber || callSid,
@@ -124,7 +135,7 @@ export async function startBot(opts = {}) {
       console.log(`[bot] dispatching: ${fromNumber}: ${text.slice(0, 80)}`);
 
       try {
-        const history = loadConversationHistory(3600000, 20);
+        const history = getTranscripts(callSid).slice(0, -1).slice(-20).map(({ role, content }) => ({ role, content }));
         const result = await dispatcher.dispatch({
           type: "dm",
           jid: fromNumber || callSid,

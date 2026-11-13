@@ -47,9 +47,9 @@ export function resolveTtsVoice(config) {
 }
 
 const DEFAULT_TTS_INSTRUCTIONS =
-  "Speak warmly and conversationally, like a helpful friend on the phone. " +
-  "Use natural pacing with brief pauses between thoughts. " +
-  "Do not sound like a customer service agent or IVR system.";
+  "Use a relaxed, matter-of-fact tone, like a colleague on the phone. " +
+  "Use an even pace, light emphasis on key words, and short natural pauses. " +
+  "Avoid exaggerated cheerfulness and announcer-style delivery.";
 
 export function resolveTtsInstructions(config) {
   return process.env.TTS_INSTRUCTIONS || config.ttsInstructions || DEFAULT_TTS_INSTRUCTIONS;

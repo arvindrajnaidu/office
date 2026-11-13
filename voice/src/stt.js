@@ -19,7 +19,6 @@ export function createSTTSession(opts) {
   const ws = new WebSocket(url, {
     headers: {
       "Authorization": `Bearer ${apiKey}`,
-      "OpenAI-Beta": "realtime=v1",
     },
   });
 
@@ -28,27 +27,32 @@ export function createSTTSession(opts) {
   ws.on("open", () => {
     // Configure the transcription session
     ws.send(JSON.stringify({
-      type: "transcription_session.update",
+      type: "session.update",
       session: {
-        input_audio_format: "g711_ulaw",
-        input_audio_transcription: {
-          model,
-          language: "en",
-        },
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500,
+        type: "transcription",
+        audio: {
+          input: {
+            format: { type: "audio/pcmu" },
+            transcription: { model, language: "en" },
+            turn_detection: {
+              type: "server_vad",
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 500,
+            },
+          },
         },
       },
     }));
-    sessionReady = true;
   });
 
   ws.on("message", (data) => {
     try {
       const event = JSON.parse(data.toString());
+
+      if (event.type === "session.updated") {
+        sessionReady = true;
+      }
 
       if (event.type === "conversation.item.input_audio_transcription.completed") {
         const text = event.transcript?.trim();
@@ -61,7 +65,7 @@ export function createSTTSession(opts) {
         onSpeechStart?.();
       }
 
-      if (event.type === "error") {
+      if (event.type === "error" || event.type === "conversation.item.input_audio_transcription.failed") {
         console.log(`[stt] error: ${event.error?.message || JSON.stringify(event.error)}`);
         onError?.(new Error(event.error?.message || "STT error"));
       }
