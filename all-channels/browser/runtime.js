@@ -27,8 +27,8 @@ export async function launchBrowser(home){
    context.pages().forEach(attach);context.on('page',attach);
    if(!restored){
     const existing=new Set(context.pages().map(p=>p.url()));
-    // Normal Chrome restores its session. Retain fallback support for the old launcher profile.
-    if(!context.pages().some(p=>/^https?:\/\//.test(p.url()))){
+    // Chrome may open a startup page instead of the saved session. Restore missing tabs without closing any current tabs.
+    {
      const restore=[];let reusable=context.pages().find(p=>p.url()==='about:blank'||p.url()==='chrome://newtab/');
      for(const url of savedTabs){if(existing.has(url))continue;const page=reusable||await context.newPage();reusable=null;existing.add(url);restore.push(page.goto(url,{waitUntil:'domcontentloaded',timeout:10000}).catch(()=>{}));}
      await Promise.all(restore);
