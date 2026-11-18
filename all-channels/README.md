@@ -204,7 +204,7 @@ Run worker transport tests with `node --test all-channels/scheduler-worker.test.
 
 ### Persistent browser and owner streaming
 
-Set `SAL_BROWSER_ENABLED=1`, `BUZZIE_API_TOKEN`, and `BACKEND_URL`. Chromium runs continuously on a virtual display in this same container. Persist `SAL_BROWSER_HOME` (default `/data/browser`) on a Railway volume. The browser uses one profile at `$SAL_BROWSER_HOME/profile`; voice remains on port 3100 and the browser HTTP/WebSocket endpoint is port 3104. Give port 3104 its own Railway service domain.
+Set `SAL_BROWSER_ENABLED=1`, `BUZZIE_API_TOKEN`, and `BACKEND_URL`. Chromium runs continuously as an independent desktop process on a virtual display in this same container. Sal attaches over a loopback-only CDP port on demand, using Playwright’s `noDefaults` mode so the existing browser context keeps its own settings. Taking control detaches that connection before remote keyboard/mouse input is enabled. Persist `SAL_BROWSER_HOME` (default `/data/browser`) on a Railway volume. The browser uses one profile at `$SAL_BROWSER_HOME/profile`; voice remains on port 3100 and the browser HTTP/WebSocket endpoint is port 3104. Give port 3104 its own Railway service domain.
 
 Hawk creates short-lived owner viewer tickets server-side. Viewer tickets travel in a URL fragment and WebSocket subprotocol, never a public query string or the channel API key. Raw VNC is bound to localhost. The stream enforces read-only input server-side until its owner ticket has taken control. Agent browser reads/actions are serialized and blocked during manual control. Manual pause persists across disconnects and restarts and ends only when an owner explicitly returns control.
 

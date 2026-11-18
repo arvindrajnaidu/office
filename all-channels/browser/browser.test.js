@@ -5,6 +5,7 @@ import{tmpdir}from'node:os';
 import{join}from'node:path';
 import{BrowserAccess,equalSecret,rfbInputFilter}from'./access.js';
 import{publicAddress,startEgressProxy}from'./egress.js';
+import{desktopChromeArgs}from'./desktop-chrome.js';
 
 test('manual takeover blocks actions and reads until explicit release, including after restart',async()=>{
  const home=mkdtempSync(join(tmpdir(),'sal-browser-lock-'));const file=join(home,'control.json');
@@ -41,4 +42,20 @@ test('real proxy rejects localhost and cloud metadata even with a crafted Host h
  const {request}=await import('node:http');
  try{for(const target of ['http://127.0.0.1:80/secret','http://169.254.169.254/latest/meta-data/']){const status=await new Promise((resolve,reject)=>{const r=request({host:'127.0.0.1',port,path:target,headers:{host:'public.example'}},res=>{res.resume();resolve(res.statusCode);});r.on('error',reject);r.end();});assert.equal(status,403);}}
  finally{await new Promise(resolve=>server.close(resolve));}
+});
+
+
+test('desktop Chrome uses its dedicated profile without automation or fingerprint override flags',()=>{
+ const args=desktopChromeArgs('/data/browser/profile');
+ assert.ok(args.includes('--user-data-dir=/data/browser/profile'));
+ assert.ok(args.includes('--remote-debugging-address=127.0.0.1'));
+ assert.ok(!args.some(arg=>/enable-automation|headless|AutomationControlled|user-agent|test-type/.test(arg)));
+});
+
+test('manual control starts only after the automation connection is detached',async()=>{
+ const access=new BrowserAccess();const {ticket}=access.session();let finish;
+ const takeover=access.take(ticket,()=>new Promise(resolve=>{finish=resolve;}));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(access.mode,'handoff');assert.equal(access.canInput(ticket),false);
+ finish();await takeover;assert.equal(access.mode,'human');assert.equal(access.canInput(ticket),true);
 });

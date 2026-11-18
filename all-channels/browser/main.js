@@ -23,7 +23,7 @@ for(let i=0;i<50&&!fs.existsSync('/tmp/.X11-unix/X99');i++)await new Promise(r=>
 child('openbox',[]);
 child('x11vnc',['-display',':99','-rfbport','5900','-localhost','-nopw','-forever','-shared','-rfbversion','3.8','-noxdamage','-repeat','-quiet']);
 proxy=await startEgressProxy();runtime=await launchBrowser(home);
-runtime.context.on('close',()=>{if(!closing)shutdown(1);});
+runtime.onExit(()=>{if(!closing)shutdown(1);});
 const origin=process.env.BACKEND_URL?new URL(process.env.BACKEND_URL).origin:'https://hawk.business';
 const body=async req=>{const chunks=[];let size=0;for await(const c of req){size+=c.length;if(size>20000)throw Error('Request too large.');chunks.push(c);}return JSON.parse(Buffer.concat(chunks).toString()||'{}');};
 const token=req=>req.headers.authorization?.match(/^Bearer (.+)$/)?.[1]||'';
@@ -53,7 +53,7 @@ server=http.createServer(async(req,res)=>{
  if(url.pathname==='/browser/control'&&req.method==='POST'){
   if(!owner(req)){json(res,401,{error:'Session expired. Reconnect from Hawk.'});return;}
   const data=await body(req);const ticket=token(req);
-  if(data.action==='take')await access.take(ticket);
+  if(data.action==='take')await access.take(ticket,()=>runtime.detach());
   else if(data.action==='release')access.release(ticket);
   else if(data.action!=='status'){json(res,400,{error:'Unknown control action.'});return;}
   json(res,200,{mode:access.mode,controller:access.controller===ticket});return;
@@ -61,7 +61,7 @@ server=http.createServer(async(req,res)=>{
  if(url.pathname==='/browser/api'&&req.method==='POST'){
   if(!equalSecret(token(req),key)){json(res,401,{error:'Unauthorized.'});return;}
   const data=await body(req);
-  if(data.op==='status'){json(res,200,{ready:true,mode:access.mode,viewerPath:'/browser'});return;}
+  if(data.op==='status'){json(res,200,{ready:true,mode:access.mode,automationAttached:runtime.isAttached(),viewerPath:'/browser'});return;}
   const allowed=['tabs','navigate','new_tab','close_tab','snapshot','click','type','press','scroll'];
   if(!allowed.includes(data.op)||Object.values(data).some(v=>typeof v!=='string'||v.length>10000)){json(res,400,{error:'Invalid browser action.'});return;}
   try{json(res,200,await access.automate(()=>runtime.action(data)));}catch(error){json(res,409,{error:access.mode!=='agent'?'The owner has control. Wait for them to Return to Sal.':String(error.message).replace(/\n[\s\S]*/,'').slice(0,240)});}return;

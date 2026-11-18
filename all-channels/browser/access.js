@@ -7,7 +7,7 @@ export class BrowserAccess {
  session(){for(const [id,s] of this.sessions)if(s.expires<Date.now())this.sessions.delete(id);const ticket=randomBytes(32).toString('base64url');const expires=Date.now()+30*60*1000;this.sessions.set(ticket,{expires});return{ticket,expiresAt:new Date(expires).toISOString()};}
  valid(ticket){const s=this.sessions.get(ticket);return !!s&&s.expires>Date.now();}
  canInput(ticket){return this.valid(ticket)&&this.mode==='human'&&this.controller===ticket;}
- async take(ticket){if(!this.valid(ticket))throw Error('Session expired.');this.mode='handoff';this.controller=ticket;this.persist();await this.tail;this.mode='human';this.persist();return{mode:this.mode};}
+ async take(ticket,onTakeover=async()=>{}){if(!this.valid(ticket))throw Error('Session expired.');this.mode='handoff';this.controller=ticket;this.persist();await this.tail;await onTakeover();this.mode='human';this.persist();return{mode:this.mode};}
  release(ticket){if(!this.valid(ticket))throw Error('Session expired.');if(this.mode==='handoff')throw Error('Handoff is still in progress.');this.controller=null;this.mode='agent';this.persist();return{mode:this.mode};}
  automate(action){const job=this.tail.then(async()=>{if(this.mode!=='agent')throw Error('The owner has control. Ask them to Return to Sal before continuing.');return action();});this.tail=job.catch(()=>{});return job;}
 }

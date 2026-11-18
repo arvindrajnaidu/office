@@ -9,14 +9,25 @@ let status=await post('/browser/api',{op:'status'});check(status.status===200,'B
 const session=await post('/browser/sessions',{});check(session.status===200&&session.data.ticket,'Owner viewer session failed');const ticket=session.data.ticket;
 if(process.argv.includes('--after-restart')){
  check(status.data.mode==='human','Manual pause did not persist across container recreation');
+ check(status.data.automationAttached===false,'Automation attached during manual restart');
  check((await post('/browser/api',{op:'snapshot'})).status===409,'Agent inspected browser after manual restart');
  await post('/browser/control',{action:'release'},ticket);
  const tabs=await post('/browser/api',{op:'tabs'});check(tabs.data.tabs.some(t=>t.url.startsWith('https://example.com')),'Open tab was not restored from persistent profile');
- console.log('Browser profile, tabs, and manual pause survived container recreation.');
+ const {chromium}=await import('playwright-core');
+ const diagnostic=await chromium.connectOverCDP('http://127.0.0.1:9222',{isLocal:true,noDefaults:true});
+ try{check((await diagnostic.contexts()[0].cookies('https://example.com')).some(c=>c.name==='sal_browser_smoke'&&c.value==='persisted'),'Browser cookies did not survive launcher restart');}finally{await diagnostic.close();}
+ console.log('Browser profile, cookies, tabs, and detached manual pause survived container recreation.');
 }else{
  if(status.data.mode!=='agent')await post('/browser/control',{action:'release'},ticket);
  const navigation=await post('/browser/api',{op:'navigate',url:'https://example.com'});check(navigation.status===200,'Public website navigation failed');
  const snapshot=await post('/browser/api',{op:'snapshot'});check(JSON.stringify(snapshot.data).includes('Example Domain'),'Real browser snapshot failed');
+ const {chromium}=await import('playwright-core');
+ const diagnostic=await chromium.connectOverCDP('http://127.0.0.1:9222',{isLocal:true,noDefaults:true});
+ try{
+  const context=diagnostic.contexts()[0];const page=context.pages().find(p=>p.url().startsWith('https://example.com'));
+  check(await page.evaluate(()=>navigator.webdriver)!==true,'Desktop browser was launched with automation defaults');
+  await context.addCookies([{name:'sal_browser_smoke',value:'persisted',url:'https://example.com',expires:Math.floor(Date.now()/1000)+3600}]);
+ }finally{await diagnostic.close();}
  const privateNavigation=await post('/browser/api',{op:'navigate',url:'http://169.254.169.254/'});check(privateNavigation.status!==200,'Private network navigation allowed');
  await post('/browser/api',{op:'navigate',url:'https://example.com'});
  await new Promise((resolve,reject)=>{
@@ -31,6 +42,7 @@ if(process.argv.includes('--after-restart')){
   });
  });
  await post('/browser/control',{action:'take'},ticket);
+ check((await post('/browser/api',{op:'status'})).data.automationAttached===false,'Sal stayed attached during manual control');
  check((await post('/browser/api',{op:'snapshot'})).status===409,'Private takeover did not block agent reads');
  check((await post('/browser/api',{op:'navigate',url:'https://example.com'})).status===409,'Private takeover did not block agent actions');
  console.log('Real Chromium navigation, DOM snapshot, authenticated streaming, egress policy, and takeover passed.');
