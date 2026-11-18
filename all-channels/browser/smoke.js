@@ -12,7 +12,9 @@ if(process.argv.includes('--after-restart')){
  check(status.data.automationAttached===false,'Automation attached during manual restart');
  check((await post('/browser/api',{op:'snapshot'})).status===409,'Agent inspected browser after manual restart');
  await post('/browser/control',{action:'release'},ticket);
- const tabs=await post('/browser/api',{op:'tabs'});check(tabs.data.tabs.some(t=>t.url.startsWith('https://example.com')),'Open tab was not restored from persistent profile');
+ const tabs=await post('/browser/api',{op:'tabs'});
+ const {readFileSync}=await import('node:fs');const saved=JSON.parse(readFileSync('/data/browser/tabs.json','utf8'));console.log('Restart diagnostics:',JSON.stringify({tabListStatus:tabs.status,visibleTabCount:tabs.data.tabs?.length,hasExpectedFixture:tabs.data.tabs?.some(t=>t.url.startsWith('https://example.com')),savedTabCount:saved.length,savedHasExpectedFixture:saved.some(url=>url.startsWith('https://example.com'))}));
+ check(tabs.status===200&&tabs.data.tabs.some(t=>t.url.startsWith('https://example.com')),'Open tab was not restored from persistent profile');
  const {chromium}=await import('playwright-core');
  const diagnostic=await chromium.connectOverCDP('http://127.0.0.1:9222',{isLocal:true,noDefaults:true});
  try{check((await diagnostic.contexts()[0].cookies('https://example.com')).some(c=>c.name==='sal_browser_smoke'&&c.value==='persisted'),'Browser cookies did not survive launcher restart');}finally{await diagnostic.close();}
@@ -41,6 +43,7 @@ if(process.argv.includes('--after-restart')){
    }
   });
  });
+ const {readFileSync}=await import('node:fs');const saved=JSON.parse(readFileSync('/data/browser/tabs.json','utf8'));console.log('Before takeover diagnostics:',JSON.stringify({savedTabCount:saved.length,savedHasExpectedFixture:saved.some(url=>url.startsWith('https://example.com'))}));
  await post('/browser/control',{action:'take'},ticket);
  check((await post('/browser/api',{op:'status'})).data.automationAttached===false,'Sal stayed attached during manual control');
  check((await post('/browser/api',{op:'snapshot'})).status===409,'Private takeover did not block agent reads');
