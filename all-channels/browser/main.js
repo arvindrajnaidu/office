@@ -16,7 +16,7 @@ const key=process.env.BUZZIE_API_TOKEN||process.env.BACKEND_TOKEN;
 if(!key)throw Error('Browser runtime requires channel authentication.');
 const children=[];let runtime,server,proxy,closing=false;
 function child(command,args){const c=spawn(command,args,{env:{...process.env,DISPLAY:':99'},stdio:['ignore','ignore','ignore']});children.push(c);c.on('error',()=>shutdown(1));c.on('exit',()=>{if(!closing)shutdown(1);});return c;}
-async function shutdown(code=0){if(closing)return;closing=true;await runtime?.context.close().catch(()=>{});for(const c of children)c.kill('SIGTERM');server?.close();proxy?.close();process.exit(code);}
+async function shutdown(code=0){if(closing)return;closing=true;await runtime?.close().catch(()=>{});for(const c of children)c.kill('SIGTERM');server?.close();proxy?.close();process.exit(code);}
 process.on('SIGTERM',()=>shutdown());process.on('SIGINT',()=>shutdown());process.on('uncaughtException',()=>shutdown(1));process.on('unhandledRejection',()=>shutdown(1));
 child('Xvfb',[':99','-screen','0','1280x900x24','-nolisten','tcp','-ac']);
 for(let i=0;i<50&&!fs.existsSync('/tmp/.X11-unix/X99');i++)await new Promise(r=>setTimeout(r,100));
