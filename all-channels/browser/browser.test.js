@@ -59,3 +59,15 @@ test('manual control starts only after the automation connection is detached',as
  assert.equal(access.mode,'handoff');assert.equal(access.canInput(ticket),false);
  finish();await takeover;assert.equal(access.mode,'human');assert.equal(access.canInput(ticket),true);
 });
+
+test('owner display requests serialize behind actions, respect handoff and cannot bypass ticket expiry',async()=>{
+ const access=new BrowserAccess();const {ticket}=access.session();
+ let finish;const inFlight=access.automate(()=>new Promise(resolve=>{finish=resolve;}));
+ await new Promise(resolve=>setImmediate(resolve));
+ let configured=false;const change=access.configure(ticket,async()=>{configured=true;});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(configured,false);
+ finish();await inFlight;await change;assert.equal(configured,true);
+ await access.take(ticket);await access.configure(ticket,async()=>{});assert.equal(access.mode,'human');
+ await assert.rejects(access.configure('wrong',async()=>{}),/expired/);
+ access.sessions.get(ticket).expires=0;await assert.rejects(access.configure(ticket,async()=>{}),/expired/);
+});

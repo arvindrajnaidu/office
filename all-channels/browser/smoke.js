@@ -48,5 +48,23 @@ if(process.argv.includes('--after-restart')){
  check((await post('/browser/api',{op:'status'})).data.automationAttached===false,'Sal stayed attached during manual control');
  check((await post('/browser/api',{op:'snapshot'})).status===409,'Private takeover did not block agent reads');
  check((await post('/browser/api',{op:'navigate',url:'https://example.com'})).status===409,'Private takeover did not block agent actions');
+ check((await post('/browser/control',{action:'display',display:'mobile'},'wrong')).status===401,'Display mode exposed without owner ticket');
+ const mobile=await post('/browser/control',{action:'display',display:'mobile'},ticket);check(mobile.status===200&&mobile.data.display==='mobile','Mobile site request failed');
+ const mobileCheck=await chromium.connectOverCDP('http://127.0.0.1:9222',{isLocal:true,noDefaults:true});
+ try{
+  const page=mobileCheck.contexts()[0].pages().find(p=>p.url().startsWith('https://example.com'));
+  const session=await mobileCheck.contexts()[0].newCDPSession(page);
+  const {layoutViewport}=await session.send('Page.getLayoutMetrics');
+  check(await page.evaluate(()=>navigator.userAgent.includes('Mobile')),'Mobile user agent not requested');
+  check(layoutViewport.clientWidth<=500,'Mobile viewport not applied');
+  const extra=await mobileCheck.contexts()[0].newPage();await new Promise(r=>setTimeout(r,500));
+  check(await extra.evaluate(()=>navigator.userAgent.includes('Mobile')),'New tab lost mobile site request');await extra.close();
+ }finally{await mobileCheck.close();}
+ check((await post('/browser/api',{op:'status'})).data.automationAttached===false,'Mobile viewing reattached Sal automation');
+ const mobileViewer=await fetch(root+'/browser/view');const csp=mobileViewer.headers.get('content-security-policy');
+ check(csp.includes('capacitor://localhost')&&csp.includes('https://localhost'),'Native viewer embedding blocked');
+ check((await post('/browser/control',{action:'display',display:'desktop'},ticket)).status===200,'Desktop restoration failed');
+ console.log('Mobile site request, narrow layout, new-tab inheritance, native embedding and paused automation passed.');
+
  console.log('Real Chromium navigation, DOM snapshot, authenticated streaming, egress policy, and takeover passed.');
 }

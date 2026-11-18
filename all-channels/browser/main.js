@@ -9,14 +9,16 @@ import {WebSocketServer} from 'ws';
 import {BrowserAccess,equalSecret,rfbInputFilter} from './access.js';
 import {startEgressProxy} from './egress.js';
 import {launchBrowser} from './runtime.js';
+import {BrowserDisplay} from './display.js';
 
 const home=process.env.SAL_BROWSER_HOME||'/data/browser';fs.mkdirSync(home,{recursive:true});
 const access=new BrowserAccess(path.join(home,'control.json'));
 const key=process.env.BUZZIE_API_TOKEN||process.env.BACKEND_TOKEN;
 if(!key)throw Error('Browser runtime requires channel authentication.');
+const display=new BrowserDisplay();
 const children=[];let runtime,server,proxy,closing=false;
 function child(command,args){const c=spawn(command,args,{env:{...process.env,DISPLAY:':99'},stdio:['ignore','ignore','ignore']});children.push(c);c.on('error',()=>shutdown(1));c.on('exit',()=>{if(!closing)shutdown(1);});return c;}
-async function shutdown(code=0){if(closing)return;closing=true;await runtime?.close().catch(()=>{});for(const c of children)c.kill('SIGTERM');server?.close();proxy?.close();process.exit(code);}
+async function shutdown(code=0){if(closing)return;closing=true;display.close();await runtime?.close().catch(()=>{});for(const c of children)c.kill('SIGTERM');server?.close();proxy?.close();process.exit(code);}
 process.on('SIGTERM',()=>shutdown());process.on('SIGINT',()=>shutdown());process.on('uncaughtException',()=>shutdown(1));process.on('unhandledRejection',()=>shutdown(1));
 child('Xvfb',[':99','-screen','0','1280x900x24','-nolisten','tcp','-ac']);
 for(let i=0;i<50&&!fs.existsSync('/tmp/.X11-unix/X99');i++)await new Promise(r=>setTimeout(r,100));
@@ -37,7 +39,7 @@ server=http.createServer(async(req,res)=>{
  if(url.pathname==='/health'){json(res,200,{ready:true});return;}
  if(url.pathname==='/browser/view'){
   const nonce=randomBytes(16).toString('base64');
-  res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':`default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors ${origin}; base-uri 'none'; form-action 'none'`});
+  res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':`default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; frame-ancestors ${origin} capacitor://localhost https://localhost; base-uri 'none'; form-action 'none'`});
   res.end(fs.readFileSync(path.join(here,'viewer.html'),'utf8').replace('__NONCE__',nonce));return;
  }
  if(url.pathname.startsWith('/browser/vendor/')){
@@ -55,8 +57,9 @@ server=http.createServer(async(req,res)=>{
   const data=await body(req);const ticket=token(req);
   if(data.action==='take')await access.take(ticket,()=>runtime.detach());
   else if(data.action==='release')access.release(ticket);
+  else if(data.action==='display'){await access.configure(ticket,()=>display.set(data.display));}
   else if(data.action!=='status'){json(res,400,{error:'Unknown control action.'});return;}
-  json(res,200,{mode:access.mode,controller:access.controller===ticket});return;
+  json(res,200,{mode:access.mode,controller:access.controller===ticket,display:display.mode});return;
  }
  if(url.pathname==='/browser/api'&&req.method==='POST'){
   if(!equalSecret(token(req),key)){json(res,401,{error:'Unauthorized.'});return;}

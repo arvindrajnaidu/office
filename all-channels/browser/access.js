@@ -9,6 +9,7 @@ export class BrowserAccess {
  canInput(ticket){return this.valid(ticket)&&this.mode==='human'&&this.controller===ticket;}
  async take(ticket,onTakeover=async()=>{}){if(!this.valid(ticket))throw Error('Session expired.');this.mode='handoff';this.controller=ticket;this.persist();await this.tail;await onTakeover();this.mode='human';this.persist();return{mode:this.mode};}
  release(ticket){if(!this.valid(ticket))throw Error('Session expired.');if(this.mode==='handoff')throw Error('Handoff is still in progress.');this.controller=null;this.mode='agent';this.persist();return{mode:this.mode};}
+ configure(ticket,action){const job=this.tail.then(async()=>{if(!this.valid(ticket))throw Error('Session expired.');if(this.mode==='handoff')throw Error('Handoff is still in progress.');return action();});this.tail=job.catch(()=>{});return job;}
  automate(action){const job=this.tail.then(async()=>{if(this.mode!=='agent')throw Error('The owner has control. Ask them to Return to Sal before continuing.');return action();});this.tail=job.catch(()=>{});return job;}
 }
 
