@@ -23,8 +23,8 @@ export async function launchBrowser(home){
  function attach(page){id(page);page.on('framenavigated',frame=>{if(frame===page.mainFrame())persistTabs();});page.on('dialog',dialog=>dialog.dismiss().catch(()=>{}));page.on('download',download=>{const name=download.suggestedFilename().replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,100);download.saveAs(path.join(home,'downloads',randomUUID()+'-'+name)).catch(()=>{});});page.on('close',()=>{ids.delete(page);if(selected===page)selected=null;persistTabs();});}
  context.pages().forEach(attach);context.on('page',attach);
  const existing=new Set(context.pages().map(p=>p.url()));
- const restore=[];
- for(const url of savedTabs){if(existing.has(url))continue;const page=context.pages().find(p=>p.url()==='about:blank')||await context.newPage();existing.add(url);restore.push(page.goto(url,{waitUntil:'domcontentloaded',timeout:10000}).catch(()=>{}));}
+ const restore=[];let reusable=context.pages().find(p=>p.url()==='about:blank');
+ for(const url of savedTabs){if(existing.has(url))continue;const page=reusable||await context.newPage();reusable=null;existing.add(url);restore.push(page.goto(url,{waitUntil:'domcontentloaded',timeout:10000}).catch(()=>{}));}
  await Promise.all(restore);restoring=false;persistTabs();
 
  let page=context.pages().find(p=>p.url()!=='about:blank')||context.pages()[0]||await context.newPage();selected=page;
