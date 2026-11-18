@@ -19,6 +19,8 @@
 import fs from "fs";
 import path from "path";
 import { startSchedulerWorker } from "./scheduler-worker.js";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 // ── Channel definitions ──────────────────────────────────────────
 
@@ -149,6 +151,18 @@ function writeConfig(home, extras) {
 async function main() {
   console.log("buzzie-ai: starting all configured channels...\n");
 
+  let browserProcess;
+  let stoppingBrowser = false;
+  if (process.env.SAL_BROWSER_ENABLED === "1") {
+    const launch = () => {
+      if (stoppingBrowser) return;
+      browserProcess = spawn(process.execPath, [fileURLToPath(new URL("./browser/main.js", import.meta.url))], { env: process.env, stdio: "inherit" });
+      browserProcess.once("exit", () => { if (!stoppingBrowser) { console.error("[browser] Restarting browser runtime."); setTimeout(launch, 2000); } });
+    };
+    launch();
+    const stop = () => { stoppingBrowser = true; browserProcess?.kill("SIGTERM"); };
+    process.once("SIGTERM", stop); process.once("SIGINT", stop);
+  }
   let schedulerWorker;
   if (process.env.SAL_WORKER_ENABLED === "1") {
     schedulerWorker = startSchedulerWorker({
@@ -196,7 +210,7 @@ async function main() {
   if (started.length > 0) console.log(`  active: ${started.join(", ")}`);
   if (skipped.length > 0) console.log(`  skipped: ${skipped.join(", ")}`);
 
-  if (started.length === 0 && !schedulerWorker) {
+  if (started.length === 0 && !schedulerWorker && !browserProcess) {
     console.error("\nNo channels configured. Pass environment variables to enable channels:\n");
     console.error("  BACKEND_URL                  Your brain's HTTP endpoint (required)");
     console.error("");

@@ -1,11 +1,11 @@
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
 LABEL org.opencontainers.image.title="Buzzie AI — All Channels" \
   org.opencontainers.image.description="Unified container running WhatsApp, Telegram, Email, and Voice channels" \
   org.opencontainers.image.url="https://github.com/arvindrajnaidu/office/tree/main/all-channels" \
   org.opencontainers.image.documentation="https://github.com/arvindrajnaidu/office/tree/main/all-channels/README.md"
 
-RUN apk add --no-cache git python3 make g++
+RUN apt-get update && apt-get install -y --no-install-recommends git python3 make g++ chromium xvfb x11vnc openbox novnc fonts-liberation fonts-noto-color-emoji ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -19,12 +19,14 @@ COPY whatsapp/package.json whatsapp/package-lock.json ./whatsapp/
 COPY telegram/package.json telegram/package-lock.json* ./telegram/
 COPY email/package.json email/package-lock.json* ./email/
 COPY voice/package.json voice/package-lock.json* ./voice/
+COPY all-channels/package.json all-channels/package-lock.json ./all-channels/
 
 # Install dependencies for each channel
 RUN cd whatsapp && npm install --omit=dev && \
     cd ../telegram && npm install --omit=dev && \
     cd ../email && npm install --omit=dev && \
-    cd ../voice && npm install --omit=dev
+    cd ../voice && npm install --omit=dev && \
+    cd ../all-channels && npm ci --omit=dev
 
 # Copy channel source code
 COPY whatsapp/ ./whatsapp/
@@ -41,7 +43,8 @@ ENV TELEGRAM_CLI_HOME=/data/telegram
 ENV EMAIL_CLI_HOME=/data/email
 ENV VOICE_CLI_HOME=/data/voice
 
-EXPOSE 3100 3101 3102 3103
+ENV SAL_BROWSER_HOME=/data/browser
+EXPOSE 3100 3101 3102 3103 3104
 
 HEALTHCHECK --interval=60s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "process.exit(0)"

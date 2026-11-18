@@ -46,7 +46,8 @@ jobs:
             type=match,pattern=buzzie-v(.*),group=1
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - uses: docker/build-push-action@v6
+      - id: build
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: all-channels/Dockerfile
@@ -56,3 +57,17 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify persistent browser and live stream
+        env:
+          BROWSER_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          docker volume create sal-browser-test
+          docker run -d --name sal-browser-test -e SAL_BROWSER_ENABLED=1 -e BUZZIE_API_TOKEN=browser-ci-test-only -e BACKEND_URL=https://hawk.business/api/channel/chat/browser-test -v sal-browser-test:/data/browser "$BROWSER_IMAGE"
+          docker exec sal-browser-test node all-channels/browser/smoke.js
+          docker stop -t 25 sal-browser-test
+          docker rm sal-browser-test
+          docker run -d --name sal-browser-test -e SAL_BROWSER_ENABLED=1 -e BUZZIE_API_TOKEN=browser-ci-test-only -e BACKEND_URL=https://hawk.business/api/channel/chat/browser-test -v sal-browser-test:/data/browser "$BROWSER_IMAGE"
+          docker exec sal-browser-test node all-channels/browser/smoke.js --after-restart
+          docker rm -f sal-browser-test
+          docker volume rm sal-browser-test

@@ -201,3 +201,13 @@ Set `SAL_WORKER_ENABLED=1` alongside `BACKEND_URL` (Hawk's `/api/channel/chat/<m
 The worker makes one authenticated POST at a time to Hawk's `/api/channel/scheduler/<merchant>` endpoint, normally every 15 seconds. Hawk owns persistent schedules, occurrence claims, execution, Activity results, and push delivery. Polling backs off on errors and resumes after restarts. An interrupted execution is recorded for inspection rather than replayed, because it may already have changed an external system.
 
 Run worker transport tests with `node --test all-channels/scheduler-worker.test.js` from the workspace root.
+
+### Persistent browser and owner streaming
+
+Set `SAL_BROWSER_ENABLED=1`, `BUZZIE_API_TOKEN`, and `BACKEND_URL`. Chromium runs continuously on a virtual display in this same container. Persist `SAL_BROWSER_HOME` (default `/data/browser`) on a Railway volume. The browser uses one profile at `$SAL_BROWSER_HOME/profile`; voice remains on port 3100 and the browser HTTP/WebSocket endpoint is port 3104. Give port 3104 its own Railway service domain.
+
+Hawk creates short-lived owner viewer tickets server-side. Viewer tickets travel in a URL fragment and WebSocket subprotocol, never a public query string or the channel API key. Raw VNC is bound to localhost. The stream enforces read-only input server-side until its owner ticket has taken control. Agent browser reads/actions are serialized and blocked during manual control. Manual pause persists across disconnects and restarts and ends only when an owner explicitly returns control.
+
+Automation tools support tabs, public HTTP/HTTPS navigation, bounded page/frame snapshots, element references, typing, keys, and scrolling. Password entry is handed to the owner. A local egress proxy rejects private network addresses and pins DNS resolutions for its outgoing connections. Chromium is launched without a browser sandbox inside this per-owner container; keep the image patched, and treat pages as untrusted data. Downloads are retained under `$SAL_BROWSER_HOME/downloads`; remote file-upload/download UI is not included in the initial viewer.
+
+Tests: `node --test all-channels/browser/browser.test.js all-channels/scheduler-worker.test.js`. The Docker publishing workflow also launches real Chromium and verifies live RFB streaming, agent exclusion during takeover, and profile/tab/manual-pause persistence across container recreation.
