@@ -192,3 +192,12 @@ See the individual channel READMEs for channel-specific details (voice greeting 
 ## License
 
 MIT
+
+
+### Sal scheduled tasks
+
+Set `SAL_WORKER_ENABLED=1` alongside `BACKEND_URL` (Hawk's `/api/channel/chat/<merchant>` endpoint) and `BUZZIE_API_TOKEN`. The container starts a scheduler worker alongside the channel adapters. No separate port or database credentials are required.
+
+The worker makes one authenticated POST at a time to Hawk's `/api/channel/scheduler/<merchant>` endpoint, normally every 15 seconds. Hawk owns persistent schedules, occurrence claims, execution, Activity results, and push delivery. Polling backs off on errors and resumes after restarts. An interrupted execution is recorded for inspection rather than replayed, because it may already have changed an external system.
+
+Run worker transport tests with `node --test all-channels/scheduler-worker.test.js` from the workspace root.

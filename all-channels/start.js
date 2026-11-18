@@ -18,6 +18,7 @@
 
 import fs from "fs";
 import path from "path";
+import { startSchedulerWorker } from "./scheduler-worker.js";
 
 // ── Channel definitions ──────────────────────────────────────────
 
@@ -148,6 +149,16 @@ function writeConfig(home, extras) {
 async function main() {
   console.log("buzzie-ai: starting all configured channels...\n");
 
+  let schedulerWorker;
+  if (process.env.SAL_WORKER_ENABLED === "1") {
+    schedulerWorker = startSchedulerWorker({
+      backendUrl: process.env.BACKEND_URL,
+      token: process.env.BUZZIE_API_TOKEN || process.env.BACKEND_TOKEN,
+    });
+    process.once("SIGTERM", () => schedulerWorker.stop());
+    process.once("SIGINT", () => schedulerWorker.stop());
+  }
+
   const started = [];
   const skipped = [];
   const startPromises = [];
@@ -185,7 +196,7 @@ async function main() {
   if (started.length > 0) console.log(`  active: ${started.join(", ")}`);
   if (skipped.length > 0) console.log(`  skipped: ${skipped.join(", ")}`);
 
-  if (started.length === 0) {
+  if (started.length === 0 && !schedulerWorker) {
     console.error("\nNo channels configured. Pass environment variables to enable channels:\n");
     console.error("  BACKEND_URL                  Your brain's HTTP endpoint (required)");
     console.error("");
@@ -204,7 +215,7 @@ async function main() {
   }
 
   // Keep process alive — channels run their own event loops
-  await Promise.all(startPromises);
+  await Promise.all([...startPromises, ...(schedulerWorker ? [schedulerWorker.done] : [])]);
 }
 
 main().catch((err) => {
