@@ -1,1 +1,1 @@
-{"name":"sal-browser-runtime","private":true,"type":"module","dependencies":{"playwright-core":"^1.58.0","ws":"^8.18.0"}}
+{"name":"sal-browser-runtime","private":true,"type":"module","dependencies":{"imapflow":"^2.12.2","playwright-core":"^1.58.0","ws":"^8.18.0"}}

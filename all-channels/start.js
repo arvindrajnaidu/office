@@ -18,6 +18,7 @@
 
 import fs from "fs";
 import path from "path";
+import { startGmailWorker } from './gmail-worker.js';
 import { startSchedulerWorker } from "./scheduler-worker.js";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -173,6 +174,17 @@ async function main() {
     process.once("SIGINT", () => schedulerWorker.stop());
   }
 
+  let gmailWorker;
+  if (process.env.SAL_GMAIL_WORKER_KEY) {
+    gmailWorker = startGmailWorker({
+      backendUrl: process.env.BACKEND_URL,
+      token: process.env.BUZZIE_API_TOKEN || process.env.BACKEND_TOKEN,
+      key: process.env.SAL_GMAIL_WORKER_KEY,
+    });
+    process.once("SIGTERM", () => gmailWorker.stop());
+    process.once("SIGINT", () => gmailWorker.stop());
+  }
+
   const started = [];
   const skipped = [];
   const startPromises = [];
@@ -210,7 +222,7 @@ async function main() {
   if (started.length > 0) console.log(`  active: ${started.join(", ")}`);
   if (skipped.length > 0) console.log(`  skipped: ${skipped.join(", ")}`);
 
-  if (started.length === 0 && !schedulerWorker && !browserProcess) {
+  if (started.length === 0 && !schedulerWorker && !gmailWorker && !browserProcess) {
     console.error("\nNo channels configured. Pass environment variables to enable channels:\n");
     console.error("  BACKEND_URL                  Your brain's HTTP endpoint (required)");
     console.error("");
@@ -229,7 +241,7 @@ async function main() {
   }
 
   // Keep process alive — channels run their own event loops
-  await Promise.all([...startPromises, ...(schedulerWorker ? [schedulerWorker.done] : [])]);
+  await Promise.all([...startPromises, ...(schedulerWorker ? [schedulerWorker.done] : []), ...(gmailWorker ? [gmailWorker.done] : [])]);
 }
 
 main().catch((err) => {
