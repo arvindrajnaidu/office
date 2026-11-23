@@ -20,7 +20,11 @@ export async function startBot(opts = {}) {
   const ttsVoice = resolveTtsVoice(config);
   const ttsInstructions = resolveTtsInstructions(config);
 
-  if (!twilio.accountSid || !twilio.authToken) {
+  const managedTwilio = process.env.SAL_MANAGED_TWILIO === "1";
+  const mediaKey = process.env.BUZZIE_API_TOKEN;
+  if (managedTwilio && !mediaKey) throw new Error("Managed voice requires a worker key.");
+
+  if (!managedTwilio && (!twilio.accountSid || !twilio.authToken)) {
     console.log(error("Twilio credentials not configured. Run setup."));
     process.exit(1);
   }
@@ -51,7 +55,7 @@ export async function startBot(opts = {}) {
   const apiPort = apiConfig.port || process.env.BUZZIE_API_PORT || 3100;
   const apiToken = apiConfig.token || process.env.BUZZIE_API_TOKEN;
 
-  const smsEnabled = process.env.TWILIO_SMS_ENABLED === "1" && backendConfig.type === "http";
+  const smsEnabled = !managedTwilio && process.env.TWILIO_SMS_ENABLED === "1" && backendConfig.type === "http";
   const onSms = smsEnabled
     ? createSmsHandler({
       authToken: twilio.authToken,
@@ -60,13 +64,14 @@ export async function startBot(opts = {}) {
     })
     : undefined;
 
-  const onRealtimeSip = createRealtimeSipHandler({ apiKey: openaiKey, backend: backendConfig });
+  const onRealtimeSip = managedTwilio ? undefined : createRealtimeSipHandler({ apiKey: openaiKey, backend: backendConfig });
 
   // Webhook + media stream handler
   const webhookServer = createWebhookServer({
     webhookUrl,
     onSms,
     onRealtimeSip,
+    managedTwilio,
     onCallStart: (callSid, from, to) => {
       upsertCall(callSid, from, to, "ringing");
     },
@@ -102,6 +107,7 @@ export async function startBot(opts = {}) {
   // Attach media stream WebSocket to the same HTTP server
   createMediaStreamServer({
     server: webhookServer,
+    mediaKey: managedTwilio ? mediaKey : undefined,
     openaiApiKey: openaiKey,
     ttsVoice,
     ttsInstructions,
@@ -181,7 +187,8 @@ export async function startBot(opts = {}) {
     console.log(info(`TTS voice: ${ttsVoice}`));
     console.log(info(`TTS tone:  ${ttsInstructions.slice(0, 70)}${ttsInstructions.length > 70 ? "…" : ""}`));
 
-    // Auto-configure Twilio phone number webhooks
+    // Hawk configures the webhooks when it manages the Twilio number.
+    if (managedTwilio) return;
     try {
       const client = createTwilioClient(twilio.accountSid, twilio.authToken);
       const numbers = await client.incomingPhoneNumbers.list({ phoneNumber: twilio.phoneNumber });

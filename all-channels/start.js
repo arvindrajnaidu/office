@@ -88,7 +88,7 @@ const channels = [
     apiPort: 3100,
     portEnv: "VOICE_API_PORT",
     canStart() {
-      return !!process.env.TWILIO_ACCOUNT_SID;
+      return process.env.SAL_MANAGED_TWILIO === "1" || !!process.env.TWILIO_ACCOUNT_SID;
     },
     configExtras() {
       const extras = {

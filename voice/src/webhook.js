@@ -13,7 +13,7 @@ const { VoiceResponse } = twilio.twiml;
  * @returns {import("http").Server}
  */
 export function createWebhookServer(opts) {
-  const { webhookUrl, onCallStart, onCallEnd, onSms, onRealtimeSip } = opts;
+  const { webhookUrl, onCallStart, onCallEnd, onSms, onRealtimeSip, managedTwilio } = opts;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -21,6 +21,11 @@ export function createWebhookServer(opts) {
 
     if (path === "/voice/realtime-sip" && req.method === "POST" && onRealtimeSip) {
       await onRealtimeSip(req, res);
+      return;
+    }
+
+    if (managedTwilio && (path === "/voice/incoming" || path === "/voice/status" || path === "/sms/incoming")) {
+      res.writeHead(404).end();
       return;
     }
 
