@@ -19,7 +19,7 @@ export function createWebhookServer(opts) {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const path = url.pathname;
 
-    if (path === "/voice/realtime-sip" && req.method === "POST" && onRealtimeSip) {
+    if (path === "/voice/realtime-sip" && ["POST", "HEAD"].includes(req.method) && onRealtimeSip) {
       await onRealtimeSip(req, res);
       return;
     }

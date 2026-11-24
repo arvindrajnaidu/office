@@ -64,7 +64,7 @@ export async function startBot(opts = {}) {
     })
     : undefined;
 
-  const onRealtimeSip = managedTwilio ? undefined : createRealtimeSipHandler({ apiKey: openaiKey, backend: backendConfig });
+  const onRealtimeSip = createRealtimeSipHandler({ apiKey: openaiKey, backend: backendConfig, managedTwilio });
 
   // Webhook + media stream handler
   const webhookServer = createWebhookServer({

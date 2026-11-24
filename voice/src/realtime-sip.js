@@ -1,11 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
 import WebSocket from "ws";
 
-export function createRealtimeSipHandler({ apiKey, backend }) {
+export function createRealtimeSipHandler({ apiKey, backend, managedTwilio = false }) {
   if (!apiKey || backend.type !== "http") return;
   const authorization = backend.headers?.Authorization;
   if (!authorization) return;
-  const toolsUrl = new URL("/api/sal/sip/tools", backend.url);
+  const backendUrl = new URL(backend.url);
+  const workspace = /^\/api\/channel\/chat\/(workspace-\d{1,32})$/.exec(backendUrl.pathname);
+  if (managedTwilio && !workspace) return;
+  const toolsPath = managedTwilio ? "/api/sal/sip/workspace/" + workspace[1] + "/tools" : "/api/sal/sip/tools";
+  const toolsUrl = new URL(toolsPath, backendUrl);
   const active = new Map();
 
   async function start(callId, role, session, greeting) {
@@ -43,7 +47,7 @@ export function createRealtimeSipHandler({ apiKey, backend }) {
           method: "POST",
           headers: { Authorization: authorization, "Content-Type": "application/json" },
           body: JSON.stringify({ callId, role, action }),
-          signal: AbortSignal.any([abort.signal, AbortSignal.timeout(23000)]),
+          signal: AbortSignal.any([abort.signal, AbortSignal.timeout(23000)]), redirect: "error",
         });
         if (!result.ok) throw new Error(`Hawk returned ${result.status}`);
         return await result.json();
@@ -128,6 +132,10 @@ export function createRealtimeSipHandler({ apiKey, backend }) {
       res.writeHead(401).end();
       return;
     }
+    if (req.method === "HEAD") {
+      res.writeHead(204, { "Cache-Control": "no-store" }).end();
+      return;
+    }
     let payload;
     try {
       const chunks = [];
@@ -144,7 +152,7 @@ export function createRealtimeSipHandler({ apiKey, backend }) {
     }
     const { callId, role, session, greeting } = payload ?? {};
     if (typeof callId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(callId)
-        || !["owner", "customer"].includes(role) || session?.type !== "realtime"
+        || !["owner", "customer"].includes(role) || (managedTwilio && role !== "owner") || session?.type !== "realtime"
         || (greeting !== undefined && (role !== "customer" || typeof greeting !== "string"
           || !greeting.trim() || greeting.length > 240 || /[\r\n]/.test(greeting)))) {
       res.writeHead(400).end();
